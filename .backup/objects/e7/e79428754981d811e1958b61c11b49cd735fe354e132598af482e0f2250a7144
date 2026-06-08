@@ -1,0 +1,488 @@
+package com.SoloSu.Crawler_tool
+
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.text.SpannableStringBuilder
+import android.text.style.ForegroundColorSpan
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import android.widget.TextView
+import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
+import androidx.core.content.ContextCompat
+import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.ListAdapter
+import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.card.MaterialCardView
+import com.google.android.material.button.MaterialButton
+import org.jsoup.Jsoup
+import org.jsoup.nodes.Document
+import org.jsoup.nodes.Element
+import org.jsoup.nodes.TextNode
+import org.jsoup.select.Elements
+import java.util.regex.Pattern
+
+class ResultAdapter(
+    private val onLongClickHtml: ((htmlContent: String) -> Unit)? = null
+) : ListAdapter<ResultItem, ResultAdapter.ViewHolder>(DiffCallback()) {
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
+        val view = LayoutInflater.from(parent.context)
+            .inflate(R.layout.item_result, parent, false)
+        return ViewHolder(view)
+    }
+
+    override fun onBindViewHolder(holder: ViewHolder, position: Int) {
+        holder.bind(getItem(position))
+    }
+
+    inner class ViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        private val tvIndex: TextView = itemView.findViewById(R.id.tvIndex)
+        private val tvContent: TextView = itemView.findViewById(R.id.tvContent)
+        private val tvAttrTags: TextView = itemView.findViewById(R.id.tvAttrTags)
+        private val btnExpand: TextView = itemView.findViewById(R.id.btnExpand)
+        private val btnCopyItem: MaterialButton = itemView.findViewById(R.id.btnCopyItem)
+        private val cardItem: MaterialCardView = itemView.findViewById(R.id.cardItem)
+
+        fun bind(item: ResultItem) {
+            // 设置序号
+            tvIndex.text = "${item.index}"
+
+            // 格式化内容为带语法高亮的HTML代码风格
+            tvContent.text = highlightHtmlContent(tvContent.context, item.content)
+
+            // 提取并显示属性标签
+            val attrTags = extractAttrTags(item.content)
+            tvAttrTags.text = attrTags
+
+            // 展开/折叠逻辑
+            val contentLineCount = estimateLineCount(item.content)
+            val needsExpand = contentLineCount > 3
+
+            if (needsExpand) {
+                btnExpand.visibility = View.VISIBLE
+                if (item.expanded) {
+                    tvContent.maxLines = Int.MAX_VALUE
+                    btnExpand.text = "收起"
+                } else {
+                    tvContent.maxLines = 3
+                    btnExpand.text = "展开更多内容"
+                }
+            } else {
+                btnExpand.visibility = View.GONE
+                tvContent.maxLines = Int.MAX_VALUE
+            }
+
+            // 展开按钮点击
+            btnExpand.setOnClickListener {
+                item.expanded = !item.expanded
+                // 只更新当前 item，不刷新整个列表
+                if (item.expanded) {
+                    tvContent.maxLines = Int.MAX_VALUE
+                    btnExpand.text = "收起"
+                } else {
+                    tvContent.maxLines = 3
+                    btnExpand.text = "展开更多内容"
+                }
+            }
+
+            // 复制单个结果
+            btnCopyItem.setOnClickListener {
+                copyToClipboard(itemView.context, item.content, "[${item.index}]")
+            }
+
+            // 点击卡片也复制
+            cardItem.setOnClickListener {
+                copyToClipboard(itemView.context, item.content, "[${item.index}]")
+            }
+
+            // 长按卡片弹出树状图（长按优先于点击）
+            cardItem.setOnLongClickListener {
+                onLongClickHtml?.invoke(item.content)
+                true
+            }
+        }
+
+        private fun copyToClipboard(context: Context, text: String, label: String) {
+            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val clip = ClipData.newPlainText("Crawler Result", text)
+            clipboard.setPrimaryClip(clip)
+            Toast.makeText(context, "已复制: $label", Toast.LENGTH_SHORT).show()
+        }
+
+        /**
+         * 估算文本行数（按每行约 40 个字符估算）
+         */
+        private fun estimateLineCount(text: String): Int {
+            if (text.isEmpty()) return 0
+            val lines = text.split("\n")
+            var totalLines = 0
+            for (line in lines) {
+                if (line.isEmpty()) {
+                    totalLines += 1
+                } else {
+                    totalLines += (line.length / 40) + 1
+                }
+            }
+            return totalLines
+        }
+
+        /**
+         * 从内容中提取属性标签，返回形如 "@title @href @data-src text()" 的字符串
+         */
+        private fun extractAttrTags(content: String): String {
+            val tags = mutableSetOf<String>()
+
+            // 匹配 @xxx 属性
+            val attrPattern = Pattern.compile("@(\\w[\\w-]*)")
+            val attrMatcher = attrPattern.matcher(content)
+            while (attrMatcher.find()) {
+                tags.add("@${attrMatcher.group(1)}")
+            }
+
+            // 检查是否包含 text()
+            if (content.contains("text()", ignoreCase = true) ||
+                content.contains("text=\"", ignoreCase = true)
+            ) {
+                tags.add("text()")
+            }
+
+            // 如果没有找到任何标签，尝试从原始内容中提取关键词
+            if (tags.isEmpty()) {
+                // 从内容片段中推断可能的属性
+                val commonAttrs = listOf("title", "href", "src", "data-src", "data-original", "alt", "class", "id")
+                for (attr in commonAttrs) {
+                    if (content.contains(attr, ignoreCase = true)) {
+                        tags.add("@$attr")
+                        if (tags.size >= 6) break
+                    }
+                }
+            }
+
+            return if (tags.isEmpty()) {
+                ""
+            } else {
+                tags.take(6).joinToString("  ")
+            }
+        }
+
+        /**
+         * 将 HTML 代码片段转换为带语法高亮的 SpannableString
+         * 标签尖括号 → 灰色（默认文本色）
+         * 标签名 → 蓝色（html_tag_color）
+         * 属性名 → 红色（html_attr_color）
+         * 属性值 → 绿色（html_value_color）
+         * 纯文本内容 → 默认色
+         */
+        private fun highlightHtmlContent(context: Context, rawContent: String): CharSequence {
+            val sb = SpannableStringBuilder()
+
+            val tagColor = ContextCompat.getColor(context, R.color.html_tag_color)
+            val attrColor = ContextCompat.getColor(context, R.color.html_attr_color)
+            val valueColor = ContextCompat.getColor(context, R.color.html_value_color)
+            val textColor = ContextCompat.getColor(context, R.color.html_text_color)
+
+            // 解析原始 HTML，不转义。匹配标签、属性、属性值
+            // 整体模式：先用 <[^>]+> 匹配整个起始/结束/自闭合标签，然后在标签内部二次解析
+            // 标签外的纯文本使用默认色
+            val tagBlockPattern = Pattern.compile("<[^>]+>")
+            val matcher = tagBlockPattern.matcher(rawContent)
+            var lastEnd = 0
+
+            while (matcher.find()) {
+                // 标签前的纯文本
+                if (matcher.start() > lastEnd) {
+                    sb.append(rawContent.substring(lastEnd, matcher.start()))
+                }
+
+                val fullTag = matcher.group()
+                // 在标签内部解析: < / </ > /> 标签名 属性名="属性值" 属性名='属性值' 属性名=无引号值
+                val innerSb = SpannableStringBuilder()
+                val innerPattern = Pattern.compile(
+                    "(</?)" +                         // < 或 </
+                    "|(/?>)" +                        // > 或 />
+                    "|([a-zA-Z][\\w-]*)" +            // 标签名或属性名
+                    "|(=\")" +                        // =" 开始属性值
+                    "|(=\')" +                        // =' 开始属性值
+                    "|(=\"[^\"]*\")" +                // ="值" 完整
+                    "|(='[^']*')" +                   // ='值' 完整
+                    "|([\\w./#:-]+)"                  // 无引号的属性值
+                )
+                val innerMatcher = innerPattern.matcher(fullTag)
+                var innerLast = 0
+                var afterEqualsQuote = false // 走过 =" 后标记，跳过属性名
+
+                while (innerMatcher.find()) {
+                    if (innerMatcher.start() > innerLast) {
+                        val between = fullTag.substring(innerLast, innerMatcher.start())
+                        innerSb.append(between)
+                    }
+
+                    val bracketOpen = innerMatcher.group(1)     // < 或 </
+                    val bracketClose = innerMatcher.group(2)    // > 或 />
+                    val nameToken = innerMatcher.group(3)       // 标签名或属性名
+                    val equalsQuote = innerMatcher.group(4)     // ="
+                    val equalsApos = innerMatcher.group(5)      // ='
+                    val quotedValue = innerMatcher.group(6)     // ="值"
+                    val aposValue = innerMatcher.group(7)       // ='值'
+                    val bareValue = innerMatcher.group(8)       // 无引号值
+
+                    when {
+                        bracketOpen != null -> {
+                            val s = SpannableStringBuilder(bracketOpen)
+                            s.setSpan(ForegroundColorSpan(textColor), 0, s.length, 0)
+                            innerSb.append(s)
+                        }
+                        bracketClose != null -> {
+                            val s = SpannableStringBuilder(bracketClose)
+                            s.setSpan(ForegroundColorSpan(textColor), 0, s.length, 0)
+                            innerSb.append(s)
+                        }
+                        afterEqualsQuote -> {
+                            // 刚走过 =" ，下一个 token 是属性值
+                            if (nameToken != null) {
+                                val s = SpannableStringBuilder(nameToken)
+                                s.setSpan(ForegroundColorSpan(valueColor), 0, s.length, 0)
+                                innerSb.append(s)
+                            } else if (bareValue != null) {
+                                val s = SpannableStringBuilder(bareValue)
+                                s.setSpan(ForegroundColorSpan(valueColor), 0, s.length, 0)
+                                innerSb.append(s)
+                            } else if (quotedValue != null) {
+                                val s = SpannableStringBuilder(quotedValue)
+                                s.setSpan(ForegroundColorSpan(valueColor), 0, s.length, 0)
+                                innerSb.append(s)
+                            } else if (aposValue != null) {
+                                val s = SpannableStringBuilder(aposValue)
+                                s.setSpan(ForegroundColorSpan(valueColor), 0, s.length, 0)
+                                innerSb.append(s)
+                            }
+                            afterEqualsQuote = false
+                        }
+                        equalsQuote != null || equalsApos != null -> {
+                            // =" 或 =' ，输出等号和引号，标记后续为属性值
+                            val eq = if (equalsQuote != null) "=\"" else "='"
+                            val s = SpannableStringBuilder(eq)
+                            s.setSpan(ForegroundColorSpan(textColor), 0, s.length, 0)
+                            innerSb.append(s)
+                            afterEqualsQuote = true
+                        }
+                        quotedValue != null -> {
+                            val s = SpannableStringBuilder(quotedValue)
+                            s.setSpan(ForegroundColorSpan(valueColor), 0, s.length, 0)
+                            innerSb.append(s)
+                        }
+                        aposValue != null -> {
+                            val s = SpannableStringBuilder(aposValue)
+                            s.setSpan(ForegroundColorSpan(valueColor), 0, s.length, 0)
+                            innerSb.append(s)
+                        }
+                        nameToken != null -> {
+                            // 是标签名还是属性名？
+                            // 通过位置判断：如果是标签内第一个非括号 token 则为标签名，否则为属性名
+                            val before = fullTag.substring(0, innerMatcher.start())
+                            val containsOpeningBracket = before.contains("<")
+                            val hasPreviousAttrOrTag = containsOpeningBracket &&
+                                !before.matches(Regex("^\\s*<\\s*\$"))
+                            if (hasPreviousAttrOrTag) {
+                                // 不是第一个 token，是属性名
+                                val s = SpannableStringBuilder(nameToken)
+                                s.setSpan(ForegroundColorSpan(attrColor), 0, s.length, 0)
+                                innerSb.append(s)
+                            } else {
+                                // 第一个有意义的 token，是标签名
+                                val s = SpannableStringBuilder(nameToken)
+                                s.setSpan(ForegroundColorSpan(tagColor), 0, s.length, 0)
+                                innerSb.append(s)
+                            }
+                        }
+                        bareValue != null -> {
+                            val s = SpannableStringBuilder(bareValue)
+                            s.setSpan(ForegroundColorSpan(valueColor), 0, s.length, 0)
+                            innerSb.append(s)
+                        }
+                    }
+                    innerLast = innerMatcher.end()
+                }
+                if (innerLast < fullTag.length) {
+                    innerSb.append(fullTag.substring(innerLast))
+                }
+                sb.append(innerSb)
+                lastEnd = matcher.end()
+            }
+
+            // 追加剩余纯文本
+            if (lastEnd < rawContent.length) {
+                sb.append(rawContent.substring(lastEnd))
+            }
+
+            return sb
+        }
+    }
+
+    class DiffCallback : DiffUtil.ItemCallback<ResultItem>() {
+        override fun areItemsTheSame(oldItem: ResultItem, newItem: ResultItem): Boolean {
+            return oldItem.index == newItem.index
+        }
+
+        override fun areContentsTheSame(oldItem: ResultItem, newItem: ResultItem): Boolean {
+            return oldItem == newItem
+        }
+    }
+
+    companion object {
+        /**
+         * 显示 HTML 树状图对话框
+         * @param context Context
+         * @param htmlContent 原始 HTML 字符串
+         * @param onSelectPath 点击树节点时的回调，传入 CSS 选择器路径
+         */
+        fun showHtmlTreeDialog(
+            context: Context,
+            htmlContent: String,
+            onSelectPath: (cssPath: String) -> Unit
+        ) {
+            try {
+                val doc = Jsoup.parse(htmlContent)
+                val rootElement = doc.body()
+
+                if (rootElement.childrenSize() == 0) {
+                    Toast.makeText(context, "未能解析出有效结构", Toast.LENGTH_SHORT).show()
+                    return
+                }
+
+                // 构建对话框内容视图
+                val scrollView = android.widget.ScrollView(context)
+                scrollView.setPadding(24, 16, 24, 16)
+
+                val treeContainer = android.widget.LinearLayout(context).apply {
+                    orientation = android.widget.LinearLayout.VERTICAL
+                }
+
+                // 递归构建树节点
+                fun buildTree(
+                    parent: android.widget.LinearLayout,
+                    element: Element,
+                    depth: Int,
+                    parentSelector: String
+                ) {
+                    val tagName = element.tagName()
+                    val classStr = if (element.hasAttr("class")) element.className() else ""
+                    val idStr = if (element.id().isNotEmpty()) "#${element.id()}" else ""
+
+                    // 构建当前节点的 CSS 选择器
+                    val currentSelector = buildSelector(element, parentSelector)
+
+                    // 构建节点显示文本
+                    val displayText = StringBuilder()
+                    // 缩进
+                    repeat(depth) { displayText.append("  │ ") }
+                    displayText.append("├─ <")
+                    displayText.append(tagName)
+                    if (idStr.isNotEmpty()) displayText.append(idStr)
+                    if (classStr.isNotEmpty()) displayText.append(".$classStr")
+                    // 显示关键属性
+                    for (attr in listOf("href", "src", "title", "alt", "data-src", "data-original")) {
+                        if (element.hasAttr(attr)) {
+                            val v = element.attr(attr)
+                            if (v.length <= 30) displayText.append(" $attr=\"$v\"")
+                            else displayText.append(" $attr=\"${v.take(27)}...\"")
+                        }
+                    }
+                    // 如果有纯文本内容，简短显示
+                    val ownText = element.ownText().take(25)
+                    if (ownText.isNotEmpty()) {
+                        displayText.append(" 「$ownText」")
+                    }
+                    displayText.append(">")
+
+                    // 创建节点行
+                    val nodeRow = TextView(context).apply {
+                        text = displayText.toString()
+                        textSize = 11f
+                        setTextColor(ContextCompat.getColorStateList(context, R.color.md_on_surface))
+                        setPadding(0, 6, 0, 6)
+                        setOnClickListener {
+                            onSelectPath(currentSelector)
+                        }
+                        // 可点击视觉反馈
+                        setOnLongClickListener {
+                            // 长按复制选择器到剪贴板
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            val clip = ClipData.newPlainText("CSS Selector", currentSelector)
+                            clipboard.setPrimaryClip(clip)
+                            Toast.makeText(context, "已复制选择器: $currentSelector", Toast.LENGTH_SHORT).show()
+                            true
+                        }
+                        // 为不同深度设置左侧边框颜色（视觉层次）
+                        setBackgroundColor(
+                            if (depth % 2 == 0) 0x00000000.toInt()
+                            else ContextCompat.getColor(context, R.color.result_item_bg)
+                        )
+                    }
+                    parent.addView(nodeRow)
+
+                    // 递归子元素
+                    for (child in element.children()) {
+                        buildTree(parent, child, depth + 1, currentSelector)
+                    }
+                }
+
+                // 从 body 的子元素开始构建
+                for (child in rootElement.children()) {
+                    buildTree(treeContainer, child, 0, "")
+                }
+
+                scrollView.addView(treeContainer)
+
+                AlertDialog.Builder(context)
+                    .setTitle("HTML 树状图")
+                    .setMessage("点击节点可填入 CSS 选择器路径，长按复制")
+                    .setView(scrollView)
+                    .setPositiveButton("关闭") { d, _ -> d.dismiss() }
+                    .show()
+            } catch (e: Exception) {
+                Toast.makeText(context, "解析失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        /**
+         * 为元素构建唯一的 CSS 选择器路径
+         */
+        private fun buildSelector(element: Element, parentSelector: String): String {
+            val tag = element.tagName()
+            // 如果有 id 直接用
+            if (element.id().isNotEmpty()) {
+                return "#${element.id()}"
+            }
+            // 构建标签选择器：优先使用 class
+            val classPart = if (element.hasAttr("class")) {
+                "." + element.className().split(" ").joinToString(".")
+            } else ""
+
+            val selector = "$tag$classPart"
+
+            // 如果同级有多个相同标签，添加 :nth-child
+            val parent = element.parent()
+            if (parent != null) {
+                val siblings = parent.children().filter { it.tagName() == tag }
+                if (siblings.size > 1) {
+                    val index = siblings.indexOf(element) + 1
+                    return if (parentSelector.isEmpty()) {
+                        "$selector:nth-child($index)"
+                    } else {
+                        "$parentSelector > $selector:nth-child($index)"
+                    }
+                }
+            }
+
+            return if (parentSelector.isEmpty()) {
+                selector
+            } else {
+                "$parentSelector > $selector"
+            }
+        }
+    }
+}

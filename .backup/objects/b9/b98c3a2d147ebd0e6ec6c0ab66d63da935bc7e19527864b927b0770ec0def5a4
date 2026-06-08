@@ -1,0 +1,220 @@
+package com.SoloSu.Crawler_tool
+
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.jsoup.Jsoup
+import org.jsoup.nodes.Document
+import org.w3c.dom.Node
+import org.w3c.dom.NodeList
+import java.io.StringReader
+import org.xml.sax.InputSource
+import java.util.concurrent.TimeUnit
+import javax.xml.parsers.DocumentBuilderFactory
+import javax.xml.xpath.XPathConstants
+import javax.xml.xpath.XPathFactory
+
+/**
+ * 爬虫引擎：支持 Jsoup CSS 选择器和 XPath 两种匹配方式
+ */
+object CrawlerEngine {
+
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .followRedirects(true)
+        .followSslRedirects(true)
+        .addInterceptor { chain ->
+            val original = chain.request()
+            val request = original.newBuilder()
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.230 Mobile Safari/537.36")
+                .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+                .build()
+            chain.proceed(request)
+        }
+        .build()
+
+    private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
+
+    sealed class MatchMode {
+        data object Jsoup : MatchMode()
+        data object XPath : MatchMode()
+    }
+
+    /**
+     * 获取页面内容并匹配
+     */
+    fun fetchAndMatch(
+        url: String,
+        expression: String,
+        mode: MatchMode
+    ): Result<List<String>> {
+        return try {
+            val html = doGet(url)
+
+            val results = when (mode) {
+                is MatchMode.Jsoup -> matchWithJsoup(html, expression)
+                is MatchMode.XPath -> matchWithXPath(html, expression)
+            }
+
+            Result.success(results)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * 仅使用已获取的HTML进行匹配（不重新请求）
+     */
+    fun matchOnly(
+        html: String,
+        expression: String,
+        mode: MatchMode
+    ): Result<List<String>> {
+        return try {
+            val results = when (mode) {
+                is MatchMode.Jsoup -> matchWithJsoup(html, expression)
+                is MatchMode.XPath -> matchWithXPath(html, expression)
+            }
+            Result.success(results)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    private fun doGet(url: String): String {
+        val request = Request.Builder()
+            .url(url)
+            .get()
+            .build()
+
+        val response = client.newCall(request).execute()
+        return response.body?.string() ?: throw RuntimeException("响应体为空")
+    }
+
+    private fun doPost(url: String, jsonParams: String): String {
+        val body = jsonParams.toRequestBody(JSON_MEDIA_TYPE)
+        val request = Request.Builder()
+            .url(url)
+            .post(body)
+            .build()
+
+        val response = client.newCall(request).execute()
+        return response.body?.string() ?: throw RuntimeException("响应体为空")
+    }
+
+    /**
+     * Jsoup CSS选择器匹配
+     */
+    private fun matchWithJsoup(html: String, cssQuery: String): List<String> {
+        try {
+            val doc: Document = Jsoup.parse(html)
+            val elements = doc.select(cssQuery)
+
+            return elements.map { element ->
+                // 返回原始 HTML 代码片段
+                element.outerHtml()
+            }
+        } catch (e: org.jsoup.select.Selector.SelectorParseException) {
+            throw RuntimeException("CSS选择器语法错误：${e.message}\n\n请检查表达式格式，例如：\n• a[href] — 匹配所有带href的链接\n• div.title — 匹配class为title的div\n• #content — 匹配id为content的元素", e)
+        } catch (e: IllegalArgumentException) {
+            throw RuntimeException("选择器格式无效：${e.message}\n\n请确认表达式不包含非法字符", e)
+        }
+    }
+
+    /**
+     * XPath 匹配
+     * 先将 HTML 转为 XHTML（Jsoup可输出XML格式），然后用 javax.xml.xpath 解析
+     */
+    private fun matchWithXPath(html: String, xpathExpr: String): List<String> {
+        try {
+            // 使用 Jsoup 将 HTML 转为 XML 格式（XHTML）
+            val doc: Document = Jsoup.parse(html)
+            doc.outputSettings().syntax(Document.OutputSettings.Syntax.xml)
+            val xmlContent = doc.html()
+
+            val factory = DocumentBuilderFactory.newInstance()
+            factory.isNamespaceAware = false
+            val builder = factory.newDocumentBuilder()
+            val xmlDoc = builder.parse(InputSource(StringReader(xmlContent)))
+
+            val xPathFactory = XPathFactory.newInstance()
+            val xpath = xPathFactory.newXPath()
+            val expr = xpath.compile(xpathExpr)
+
+            val nodeList = expr.evaluate(xmlDoc, XPathConstants.NODESET) as NodeList
+
+            val results = mutableListOf<String>()
+            for (i in 0 until nodeList.length) {
+                val node = nodeList.item(i)
+                results.add(nodeToString(node))
+            }
+
+            return results
+        } catch (e: javax.xml.xpath.XPathExpressionException) {
+            throw RuntimeException("XPath表达式语法错误：${e.message}\n\n请检查表达式格式，例如：\n• //a — 匹配所有a标签\n• //a/@href — 匹配所有链接的href属性\n• //div[@class='title'] — 匹配class为title的div", e)
+        } catch (e: org.xml.sax.SAXException) {
+            throw RuntimeException("HTML解析为XML时出错，可能页面结构不标准：${e.message}", e)
+        }
+    }
+
+    private fun nodeToString(node: Node): String {
+        return when (node.nodeType) {
+            Node.ELEMENT_NODE -> {
+                // 使用序列化方式输出原始 XML 片段
+                serializerNodeToString(node)
+            }
+            Node.TEXT_NODE -> node.textContent?.trim() ?: ""
+            Node.ATTRIBUTE_NODE -> node.nodeValue ?: ""
+            else -> node.textContent?.trim() ?: ""
+        }
+    }
+
+    /**
+     * 将 DOM Node 序列化为 XML 字符串片段（相当于 outerXml）
+     */
+    private fun serializerNodeToString(node: Node): String {
+        try {
+            val transformerFactory = javax.xml.transform.TransformerFactory.newInstance()
+            val transformer = transformerFactory.newTransformer()
+            transformer.setOutputProperty(javax.xml.transform.OutputKeys.OMIT_XML_DECLARATION, "yes")
+            transformer.setOutputProperty(javax.xml.transform.OutputKeys.INDENT, "no")
+            val source = javax.xml.transform.dom.DOMSource(node)
+            val result = javax.xml.transform.stream.StreamResult(java.io.StringWriter())
+            transformer.transform(source, result)
+            return result.writer.toString().trim()
+        } catch (e: Exception) {
+            // 降级：手动拼接
+            val sb = StringBuilder()
+            sb.append("<").append(node.nodeName)
+            val attrs = node.attributes
+            for (j in 0 until attrs.length) {
+                val attr = attrs.item(j)
+                if (attr.nodeName != "xmlns") {
+                    sb.append(" ").append(attr.nodeName).append("=\"").append(attr.nodeValue).append("\"")
+                }
+            }
+            val hasChild = node.hasChildNodes()
+            if (hasChild) {
+                sb.append(">")
+                val child = node.firstChild
+                if (child.nodeType == Node.TEXT_NODE) {
+                    sb.append(child.textContent)
+                }
+                sb.append("</").append(node.nodeName).append(">")
+            } else {
+                sb.append("/>")
+            }
+            return sb.toString()
+        }
+    }
+
+    private fun StringBuilder.appendIfNotEmpty(text: String) {
+        if (text.isNotEmpty()) {
+            if (this.isNotEmpty()) this.append(" ")
+            this.append(text)
+        }
+    }
+}

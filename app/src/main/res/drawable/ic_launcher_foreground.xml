@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- ===== 蜘蛛身体（圆形）===== -->
+    <group android:translateX="54" android:translateY="46">
+        <!-- 身体主圆形 -->
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M0,-10C5.5,-10 10,-5.5 10,0C10,5.5 5.5,10 0,10C-5.5,10 -10,5.5 -10,0C-10,-5.5 -5.5,-10 0,-10z" />
+        <!-- 头部小圆 -->
+        <path
+            android:fillColor="#FFFFFFFF"
+            android:pathData="M0,-14C3,-14 5.5,-11.5 5.5,-8.5C5.5,-5.5 3,-3 0,-3C-3,-3 -5.5,-5.5 -5.5,-8.5C-5.5,-11.5 -3,-14 0,-14z" />
+    </group>
+
+    <!-- ===== 蜘蛛腿（8条）===== -->
+    <group android:translateX="54" android:translateY="46">
+        <!-- 左上腿 -->
+        <path
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="1.5"
+            android:fillColor="#00000000"
+            android:strokeLineCap="round"
+            android:pathData="M-6,-8Q-16,-18 -22,-26" />
+        <!-- 左中上腿 -->
+        <path
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="1.5"
+            android:fillColor="#00000000"
+            android:strokeLineCap="round"
+            android:pathData="M-9,-4Q-20,-12 -26,-16" />
+        <!-- 左中下腿 -->
+        <path
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="1.5"
+            android:fillColor="#00000000"
+            android:strokeLineCap="round"
+            android:pathData="M-9,4Q-20,12 -26,18" />
+        <!-- 左下腿 -->
+        <path
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="1.5"
+            android:fillColor="#00000000"
+            android:strokeLineCap="round"
+            android:pathData="M-6,8Q-16,18 -22,26" />
+        <!-- 右上腿 -->
+        <path
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="1.5"
+            android:fillColor="#00000000"
+            android:strokeLineCap="round"
+            android:pathData="M6,-8Q16,-18 22,-26" />
+        <!-- 右中上腿 -->
+        <path
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="1.5"
+            android:fillColor="#00000000"
+            android:strokeLineCap="round"
+            android:pathData="M9,-4Q20,-12 26,-16" />
+        <!-- 右中下腿 -->
+        <path
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="1.5"
+            android:fillColor="#00000000"
+            android:strokeLineCap="round"
+            android:pathData="M9,4Q20,12 26,18" />
+        <!-- 右下腿 -->
+        <path
+            android:strokeColor="#FFFFFFFF"
+            android:strokeWidth="1.5"
+            android:fillColor="#00000000"
+            android:strokeLineCap="round"
+            android:pathData="M6,8Q16,18 22,26" />
+    </group>
+
+    <!-- ===== 代码符号 < / > ===== -->
+    <group android:translateX="54" android:translateY="72">
+        <!-- < 符号 -->
+        <path
+            android:strokeColor="#FFE3F0FF"
+            android:strokeWidth="2.5"
+            android:fillColor="#00000000"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:pathData="M-14,-9L-22,0L-14,9" />
+        <!-- 斜杠 / -->
+        <path
+            android:strokeColor="#FFE3F0FF"
+            android:strokeWidth="2.5"
+            android:fillColor="#00000000"
+            android:strokeLineCap="round"
+            android:pathData="M-2,9L2,-9" />
+        <!-- > 符号 -->
+        <path
+            android:strokeColor="#FFE3F0FF"
+            android:strokeWidth="2.5"
+            android:fillColor="#00000000"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:pathData="M14,-9L22,0L14,9" />
+    </group>
+
+    <!-- ===== 抓取弧线（数据抓取轨迹）===== -->
+    <!-- 左侧抓取弧线 -->
+    <path
+        android:strokeColor="#80FFFFFF"
+        android:strokeWidth="1.2"
+        android:fillColor="#00000000"
+        android:strokeLineCap="round"
+        android:pathData="M28,30Q18,36 14,44" />
+    <!-- 右侧抓取弧线 -->
+    <path
+        android:strokeColor="#80FFFFFF"
+        android:strokeWidth="1.2"
+        android:fillColor="#00000000"
+        android:strokeLineCap="round"
+        android:pathData="M80,30Q90,36 94,44" />
+
+    <!-- ===== 数据点（小圆点）===== -->
+    <path
+        android:fillColor="#80FFFFFF"
+        android:pathData="M12,44m-1.5,0a1.5,1.5 0,1 0,3 0a1.5,1.5 0,1 0,-3 0" />
+    <path
+        android:fillColor="#80FFFFFF"
+        android:pathData="M96,44m-1.5,0a1.5,1.5 0,1 0,3 0a1.5,1.5 0,1 0,-3 0" />
+
+</vector>

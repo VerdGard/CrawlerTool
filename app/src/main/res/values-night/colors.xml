@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 主色调（深色模式下用亮蓝，保持可读性） -->
+    <color name="md_primary">#FF90BFFF</color>
+    <color name="md_on_primary">#FF002E6E</color>
+    <color name="md_primary_container">#FF00458E</color>
+    <color name="md_on_primary_container">#FFD6E8FF</color>
+
+    <!-- 次要色 -->
+    <color name="md_secondary">#FFC2C7D1</color>
+    <color name="md_on_secondary">#FF2D3138</color>
+    <color name="md_secondary_container">#FF44474E</color>
+    <color name="md_on_secondary_container">#FFDEE3EC</color>
+
+    <!-- 表面/背景 -->
+    <color name="md_surface">#FF1C1B1F</color>
+    <color name="md_on_surface">#FFE6E1E5</color>
+    <color name="md_surface_variant">#FF49454F</color>
+    <color name="md_on_surface_variant">#FFCAC4D0</color>
+    <color name="md_background">#FF111318</color>
+    <color name="md_on_background">#FFE3E2E6</color>
+    <color name="md_outline">#FF938F99</color>
+    <color name="md_error">#FFEF5350</color>
+
+    <!-- 卡片通用 -->
+    <color name="card_background">#FF2C2C2E</color>
+    <color name="card_elevation_shadow">#33000000</color>
+    <color name="divider_color">#FF3C3C3E</color>
+    <color name="input_background">#FF38383A</color>
+
+    <!-- 结果卡片色调 -->
+    <color name="result_item_bg">#FF252528</color>
+    <color name="result_item_border">#FF3C3C40</color>
+
+    <!-- Chip 标签 -->
+    <color name="chip_background">#FF2A3A5A</color>
+    <color name="chip_text_color">#FF90BFFF</color>
+
+    <!-- 展开按钮 -->
+    <color name="expand_btn_text">#FF90BFFF</color>
+    <color name="expand_btn_bg">#FF1A2A48</color>
+
+    <!-- HTML 代码高亮 -->
+    <color name="html_tag_color">#FF64B5F6</color>
+    <color name="html_attr_color">#FFEF9A9A</color>
+    <color name="html_value_color">#FF81C784</color>
+    <color name="html_text_color">#FFE0E0E0</color>
+    <color name="html_line_even">#FF2A2A30</color>
+    <color name="html_content_bg">#FF2A2A30</color>
+
+    <!-- 序号标签 -->
+    <color name="index_badge_bg">#FF90BFFF</color>
+    <color name="index_badge_text">#FF002E6E</color>
+</resources>

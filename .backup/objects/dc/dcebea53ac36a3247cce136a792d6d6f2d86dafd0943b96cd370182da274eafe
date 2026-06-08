@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="utf-8"?>
+<com.google.android.material.card.MaterialCardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/cardItem"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginBottom="8dp"
+    app:cardElevation="2dp"
+    app:cardCornerRadius="10dp"
+    app:strokeWidth="1dp"
+    app:strokeColor="@color/result_item_border"
+    app:contentPadding="0dp"
+    app:cardBackgroundColor="@color/result_item_bg">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <!-- 顶部：序号标签 + 复制按钮 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="10dp"
+            android:paddingTop="8dp"
+            android:paddingBottom="4dp">
+
+            <FrameLayout
+                android:layout_width="26dp"
+                android:layout_height="26dp"
+                android:background="@drawable/index_badge_bg">
+
+                <TextView
+                    android:id="@+id/tvIndex"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:textSize="11sp"
+                    android:textColor="@color/index_badge_text"
+                    android:textStyle="bold" />
+
+            </FrameLayout>
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:text="匹配结果"
+                android:textSize="12sp"
+                android:textColor="@color/md_on_surface_variant"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnCopyItem"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="复制"
+                android:textSize="10sp"
+                android:minHeight="0dp"
+                android:paddingVertical="2dp"
+                android:paddingHorizontal="10dp"
+                app:cornerRadius="12dp"
+                app:backgroundTint="@color/md_primary_container"
+                android:textColor="@color/md_on_primary_container" />
+
+        </LinearLayout>
+
+        <!-- HTML代码区域（带等宽字体和格式化） -->
+        <TextView
+            android:id="@+id/tvContent"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="8dp"
+            android:textSize="12sp"
+            android:textColor="@color/html_text_color"
+            android:lineSpacingExtra="4dp"
+            android:typeface="monospace"
+            android:background="#FFF5F7FA"
+            android:maxLines="3"
+            android:ellipsize="end" />
+
+        <!-- 分割线 -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="0.5dp"
+            android:background="@color/divider_color" />
+
+        <!-- 底部：属性标签 + 展开/折叠按钮 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="6dp">
+
+            <!-- 属性标签行 -->
+            <TextView
+                android:id="@+id/tvAttrTags"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:textSize="10sp"
+                android:textColor="@color/md_secondary"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+            <!-- 展开/折叠按钮 -->
+            <TextView
+                android:id="@+id/btnExpand"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="展开更多内容"
+                android:textSize="11sp"
+                android:textColor="@color/expand_btn_text"
+                android:paddingHorizontal="10dp"
+                android:paddingVertical="2dp"
+                android:gravity="center"
+                android:visibility="gone"
+                android:background="@drawable/expand_btn_bg" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+</com.google.android.material.card.MaterialCardView>

@@ -1,0 +1,7 @@
+package com.SoloSu.Crawler_tool
+
+data class ResultItem(
+    val index: Int,
+    val content: String,
+    var expanded: Boolean = false
+)

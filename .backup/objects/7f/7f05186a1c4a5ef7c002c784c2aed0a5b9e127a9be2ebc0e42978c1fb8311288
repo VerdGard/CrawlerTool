@@ -1,0 +1,202 @@
+package com.SoloSu.Crawler_tool
+
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.jsoup.Jsoup
+import org.jsoup.nodes.Document
+import org.w3c.dom.Node
+import org.w3c.dom.NodeList
+import java.io.StringReader
+import org.xml.sax.InputSource
+import java.util.concurrent.TimeUnit
+import javax.xml.parsers.DocumentBuilderFactory
+import javax.xml.xpath.XPathConstants
+import javax.xml.xpath.XPathFactory
+
+/**
+ * 爬虫引擎：支持 Jsoup CSS 选择器和 XPath 两种匹配方式
+ */
+object CrawlerEngine {
+
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .followRedirects(true)
+        .followSslRedirects(true)
+        .addInterceptor { chain ->
+            val original = chain.request()
+            val request = original.newBuilder()
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.230 Mobile Safari/537.36")
+                .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8")
+                .header("Accept-Language", "zh-CN,zh;q=0.9,en;q=0.8")
+                .build()
+            chain.proceed(request)
+        }
+        .build()
+
+    private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
+
+    sealed class MatchMode {
+        data object Jsoup : MatchMode()
+        data object XPath : MatchMode()
+    }
+
+    /**
+     * 获取页面内容并匹配
+     */
+    fun fetchAndMatch(
+        url: String,
+        expression: String,
+        mode: MatchMode,
+        postParams: String? = null
+    ): Result<List<String>> {
+        return try {
+            val html = if (postParams.isNullOrBlank()) {
+                doGet(url)
+            } else {
+                doPost(url, postParams)
+            }
+
+            val results = when (mode) {
+                is MatchMode.Jsoup -> matchWithJsoup(html, expression)
+                is MatchMode.XPath -> matchWithXPath(html, expression)
+            }
+
+            Result.success(results)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * 仅使用已获取的HTML进行匹配（不重新请求）
+     */
+    fun matchOnly(
+        html: String,
+        expression: String,
+        mode: MatchMode
+    ): Result<List<String>> {
+        return try {
+            val results = when (mode) {
+                is MatchMode.Jsoup -> matchWithJsoup(html, expression)
+                is MatchMode.XPath -> matchWithXPath(html, expression)
+            }
+            Result.success(results)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    private fun doGet(url: String): String {
+        val request = Request.Builder()
+            .url(url)
+            .get()
+            .build()
+
+        val response = client.newCall(request).execute()
+        return response.body?.string() ?: throw RuntimeException("响应体为空")
+    }
+
+    private fun doPost(url: String, jsonParams: String): String {
+        val body = jsonParams.toRequestBody(JSON_MEDIA_TYPE)
+        val request = Request.Builder()
+            .url(url)
+            .post(body)
+            .build()
+
+        val response = client.newCall(request).execute()
+        return response.body?.string() ?: throw RuntimeException("响应体为空")
+    }
+
+    /**
+     * Jsoup CSS选择器匹配
+     */
+    private fun matchWithJsoup(html: String, cssQuery: String): List<String> {
+        val doc: Document = Jsoup.parse(html)
+        val elements = doc.select(cssQuery)
+
+        return elements.map { element ->
+            val sb = StringBuilder()
+
+            // 尝试提取常用属性
+            val attrs = listOf("href", "src", "data-original", "data-src", "title", "alt", "class", "id")
+            for (attr in attrs) {
+                if (element.hasAttr(attr)) {
+                    sb.append("$attr=\"${element.attr(attr)}\" ")
+                }
+            }
+
+            // 如果有自定义属性（非标准属性），也提取
+            element.attributes().forEach { attr ->
+                if (attr.key !in attrs && !attr.key.startsWith("_")) {
+                    sb.append("${attr.key}=\"${attr.value}\" ")
+                }
+            }
+
+            val text = element.ownText()
+            sb.appendIfNotEmpty("text=\"$text\"")
+
+            sb.toString().trim().ifEmpty { text }
+        }
+    }
+
+    /**
+     * XPath 匹配
+     * 先将 HTML 转为 XHTML（Jsoup可输出XML格式），然后用 javax.xml.xpath 解析
+     */
+    private fun matchWithXPath(html: String, xpathExpr: String): List<String> {
+        // 使用 Jsoup 将 HTML 转为 XML 格式（XHTML）
+        val doc: Document = Jsoup.parse(html)
+        doc.outputSettings().syntax(Document.OutputSettings.Syntax.xml)
+        val xmlContent = doc.html()
+
+        val factory = DocumentBuilderFactory.newInstance()
+        factory.isNamespaceAware = false
+        val builder = factory.newDocumentBuilder()
+        val xmlDoc = builder.parse(InputSource(StringReader(xmlContent)))
+
+        val xPathFactory = XPathFactory.newInstance()
+        val xpath = xPathFactory.newXPath()
+        val expr = xpath.compile(xpathExpr)
+
+        val nodeList = expr.evaluate(xmlDoc, XPathConstants.NODESET) as NodeList
+
+        val results = mutableListOf<String>()
+        for (i in 0 until nodeList.length) {
+            val node = nodeList.item(i)
+            results.add(nodeToString(node))
+        }
+
+        return results
+    }
+
+    private fun nodeToString(node: Node): String {
+        return when (node.nodeType) {
+            Node.ELEMENT_NODE -> {
+                val sb = StringBuilder()
+                val attrs = node.attributes
+                for (j in 0 until attrs.length) {
+                    val attr = attrs.item(j)
+                    if (attr.nodeName != "xmlns") {
+                        sb.append("@${attr.nodeName}=\"${attr.nodeValue}\" ")
+                    }
+                }
+                val textContent = node.textContent?.trim() ?: ""
+                sb.appendIfNotEmpty("text=\"$textContent\"")
+                sb.toString().trim()
+            }
+            Node.TEXT_NODE -> node.textContent?.trim() ?: ""
+            Node.ATTRIBUTE_NODE -> node.nodeValue ?: ""
+            else -> node.textContent?.trim() ?: ""
+        }
+    }
+
+    private fun StringBuilder.appendIfNotEmpty(text: String) {
+        if (text.isNotEmpty()) {
+            if (this.isNotEmpty()) this.append(" ")
+            this.append(text)
+        }
+    }
+}

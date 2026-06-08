@@ -1,0 +1,965 @@
+package com.SoloSu.Crawler_tool
+
+import android.annotation.SuppressLint
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.graphics.Typeface
+import android.text.SpannableStringBuilder
+import android.text.style.ForegroundColorSpan
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.MotionEvent
+import android.view.ScaleGestureDetector
+import android.view.View
+import android.view.ViewGroup
+import android.widget.Button
+import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
+import android.widget.Toast
+import androidx.core.content.ContextCompat
+import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.ListAdapter
+import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.card.MaterialCardView
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import org.jsoup.Jsoup
+import org.jsoup.nodes.Element
+import java.util.regex.Pattern
+
+class ResultAdapter(
+    private val onLongClickHtml: ((htmlContent: String) -> Unit)? = null
+) : ListAdapter<ResultItem, ResultAdapter.ViewHolder>(DiffCallback()) {
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
+        val view = LayoutInflater.from(parent.context)
+            .inflate(R.layout.item_result, parent, false)
+        return ViewHolder(view)
+    }
+
+    override fun onBindViewHolder(holder: ViewHolder, position: Int) {
+        holder.bind(getItem(position))
+    }
+
+    inner class ViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
+        private val tvIndex: TextView = itemView.findViewById(R.id.tvIndex)
+        private val tvContent: TextView = itemView.findViewById(R.id.tvContent)
+        private val tvAttrTags: TextView = itemView.findViewById(R.id.tvAttrTags)
+        private val btnExpand: TextView = itemView.findViewById(R.id.btnExpand)
+        private val btnCopyItem: MaterialButton = itemView.findViewById(R.id.btnCopyItem)
+        private val cardItem: MaterialCardView = itemView.findViewById(R.id.cardItem)
+
+        fun bind(item: ResultItem) {
+            tvIndex.text = "${item.index}"
+            tvContent.text = highlightHtmlContent(tvContent.context, item.content)
+
+            val attrTags = extractAttrTags(item.content)
+            tvAttrTags.text = attrTags
+
+            val contentLineCount = estimateLineCount(item.content)
+            val needsExpand = contentLineCount > 3
+
+            if (needsExpand) {
+                btnExpand.visibility = View.VISIBLE
+                if (item.expanded) {
+                    tvContent.maxLines = Int.MAX_VALUE
+                    btnExpand.text = "收起"
+                } else {
+                    tvContent.maxLines = 3
+                    btnExpand.text = "展开更多内容"
+                }
+            } else {
+                btnExpand.visibility = View.GONE
+                tvContent.maxLines = Int.MAX_VALUE
+            }
+
+            btnExpand.setOnClickListener {
+                item.expanded = !item.expanded
+                if (item.expanded) {
+                    tvContent.maxLines = Int.MAX_VALUE
+                    btnExpand.text = "收起"
+                } else {
+                    tvContent.maxLines = 3
+                    btnExpand.text = "展开更多内容"
+                }
+            }
+
+            btnCopyItem.setOnClickListener {
+                copyToClipboard(itemView.context, item.content, "[${item.index}]")
+            }
+
+            cardItem.setOnLongClickListener {
+                val content = item.content
+                if (isProbablyHtml(content)) {
+                    showHtmlTreeDialog(cardItem.context, content) { cssPath ->
+                        val clipboard = cardItem.context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        val clip = ClipData.newPlainText("CSS Selector", cssPath)
+                        clipboard.setPrimaryClip(clip)
+                        Toast.makeText(cardItem.context, "已选择路径: $cssPath", Toast.LENGTH_SHORT).show()
+                    }
+                } else {
+                    onLongClickHtml?.invoke(content)
+                }
+                true
+            }
+        }
+
+        private fun copyToClipboard(context: Context, text: String, label: String) {
+            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val clip = ClipData.newPlainText("Crawler Result", text)
+            clipboard.setPrimaryClip(clip)
+            Toast.makeText(context, "已复制: $label", Toast.LENGTH_SHORT).show()
+        }
+
+        private fun estimateLineCount(text: String): Int {
+            if (text.isEmpty()) return 0
+            val lines = text.split("\n")
+            var totalLines = 0
+            for (line in lines) {
+                if (line.isEmpty()) {
+                    totalLines += 1
+                } else {
+                    totalLines += (line.length / 40) + 1
+                }
+            }
+            return totalLines
+        }
+
+        private fun extractAttrTags(content: String): String {
+            val tags = mutableSetOf<String>()
+            val attrPattern = Pattern.compile("@(\\w[\\w-]*)")
+            val attrMatcher = attrPattern.matcher(content)
+            while (attrMatcher.find()) {
+                tags.add("@${attrMatcher.group(1)}")
+            }
+            if (content.contains("text()", ignoreCase = true) ||
+                content.contains("text=\"", ignoreCase = true)
+            ) {
+                tags.add("text()")
+            }
+            if (tags.isEmpty()) {
+                val commonAttrs = listOf("title", "href", "src", "data-src", "data-original", "alt", "class", "id")
+                for (attr in commonAttrs) {
+                    if (content.contains(attr, ignoreCase = true)) {
+                        tags.add("@$attr")
+                        if (tags.size >= 6) break
+                    }
+                }
+            }
+            return if (tags.isEmpty()) "" else tags.take(6).joinToString("  ")
+        }
+
+        private fun highlightHtmlContent(context: Context, rawContent: String): CharSequence {
+            val sb = SpannableStringBuilder()
+            val tagColor = ContextCompat.getColor(context, R.color.html_tag_color)
+            val attrColor = ContextCompat.getColor(context, R.color.html_attr_color)
+            val valueColor = ContextCompat.getColor(context, R.color.html_value_color)
+            val textColor = ContextCompat.getColor(context, R.color.html_text_color)
+
+            val tagBlockPattern = Pattern.compile("<[^>]+>")
+            val matcher = tagBlockPattern.matcher(rawContent)
+            var lastEnd = 0
+
+            while (matcher.find()) {
+                if (matcher.start() > lastEnd) {
+                    sb.append(rawContent.substring(lastEnd, matcher.start()))
+                }
+
+                val fullTag = matcher.group()
+                val innerSb = SpannableStringBuilder()
+                val innerPattern = Pattern.compile(
+                    "(</?)" +
+                    "|(/?>)" +
+                    "|([a-zA-Z][\\w-]*)" +
+                    "|(=\")" +
+                    "|(=\')" +
+                    "|(=\"[^\"]*\")" +
+                    "|(='[^']*')" +
+                    "|([\\w./#:-]+)"
+                )
+                val innerMatcher = innerPattern.matcher(fullTag)
+                var innerLast = 0
+                var afterEqualsQuote = false
+
+                while (innerMatcher.find()) {
+                    if (innerMatcher.start() > innerLast) {
+                        val between = fullTag.substring(innerLast, innerMatcher.start())
+                        innerSb.append(between)
+                    }
+
+                    val bracketOpen = innerMatcher.group(1)
+                    val bracketClose = innerMatcher.group(2)
+                    val nameToken = innerMatcher.group(3)
+                    val equalsQuote = innerMatcher.group(4)
+                    val equalsApos = innerMatcher.group(5)
+                    val quotedValue = innerMatcher.group(6)
+                    val aposValue = innerMatcher.group(7)
+                    val bareValue = innerMatcher.group(8)
+
+                    when {
+                        bracketOpen != null -> {
+                            val s = SpannableStringBuilder(bracketOpen)
+                            s.setSpan(ForegroundColorSpan(textColor), 0, s.length, 0)
+                            innerSb.append(s)
+                        }
+                        bracketClose != null -> {
+                            val s = SpannableStringBuilder(bracketClose)
+                            s.setSpan(ForegroundColorSpan(textColor), 0, s.length, 0)
+                            innerSb.append(s)
+                        }
+                        afterEqualsQuote -> {
+                            if (nameToken != null) {
+                                val s = SpannableStringBuilder(nameToken)
+                                s.setSpan(ForegroundColorSpan(valueColor), 0, s.length, 0)
+                                innerSb.append(s)
+                            } else if (bareValue != null) {
+                                val s = SpannableStringBuilder(bareValue)
+                                s.setSpan(ForegroundColorSpan(valueColor), 0, s.length, 0)
+                                innerSb.append(s)
+                            } else if (quotedValue != null) {
+                                val s = SpannableStringBuilder(quotedValue)
+                                s.setSpan(ForegroundColorSpan(valueColor), 0, s.length, 0)
+                                innerSb.append(s)
+                            } else if (aposValue != null) {
+                                val s = SpannableStringBuilder(aposValue)
+                                s.setSpan(ForegroundColorSpan(valueColor), 0, s.length, 0)
+                                innerSb.append(s)
+                            }
+                            afterEqualsQuote = false
+                        }
+                        equalsQuote != null || equalsApos != null -> {
+                            val eq = if (equalsQuote != null) "=\"" else "='"
+                            val s = SpannableStringBuilder(eq)
+                            s.setSpan(ForegroundColorSpan(textColor), 0, s.length, 0)
+                            innerSb.append(s)
+                            afterEqualsQuote = true
+                        }
+                        quotedValue != null -> {
+                            val s = SpannableStringBuilder(quotedValue)
+                            s.setSpan(ForegroundColorSpan(valueColor), 0, s.length, 0)
+                            innerSb.append(s)
+                        }
+                        aposValue != null -> {
+                            val s = SpannableStringBuilder(aposValue)
+                            s.setSpan(ForegroundColorSpan(valueColor), 0, s.length, 0)
+                            innerSb.append(s)
+                        }
+                        nameToken != null -> {
+                            val before = fullTag.substring(0, innerMatcher.start())
+                            val containsOpeningBracket = before.contains("<")
+                            val hasPreviousAttrOrTag = containsOpeningBracket &&
+                                !before.matches(Regex("^\\s*<\\s*\$"))
+                            if (hasPreviousAttrOrTag) {
+                                val s = SpannableStringBuilder(nameToken)
+                                s.setSpan(ForegroundColorSpan(attrColor), 0, s.length, 0)
+                                innerSb.append(s)
+                            } else {
+                                val s = SpannableStringBuilder(nameToken)
+                                s.setSpan(ForegroundColorSpan(tagColor), 0, s.length, 0)
+                                innerSb.append(s)
+                            }
+                        }
+                        bareValue != null -> {
+                            val s = SpannableStringBuilder(bareValue)
+                            s.setSpan(ForegroundColorSpan(valueColor), 0, s.length, 0)
+                            innerSb.append(s)
+                        }
+                    }
+                    innerLast = innerMatcher.end()
+                }
+                if (innerLast < fullTag.length) {
+                    innerSb.append(fullTag.substring(innerLast))
+                }
+                sb.append(innerSb)
+                lastEnd = matcher.end()
+            }
+            if (lastEnd < rawContent.length) {
+                sb.append(rawContent.substring(lastEnd))
+            }
+            return sb
+        }
+
+        private fun isProbablyHtml(text: String): Boolean {
+            val trimmed = text.trim()
+            if (trimmed.isEmpty()) return false
+            return trimmed.contains("<") && trimmed.contains(">") &&
+                (trimmed.contains("</") ||
+                 trimmed.matches(Regex(".*<[a-zA-Z!?][^>]*>.*")) ||
+                 trimmed.startsWith("<!") ||
+                 trimmed.startsWith("<?xml"))
+        }
+    }
+
+    class DiffCallback : DiffUtil.ItemCallback<ResultItem>() {
+        override fun areItemsTheSame(oldItem: ResultItem, newItem: ResultItem): Boolean {
+            return oldItem.index == newItem.index
+        }
+
+        override fun areContentsTheSame(oldItem: ResultItem, newItem: ResultItem): Boolean {
+            return oldItem == newItem
+        }
+    }
+
+    companion object {
+        /**
+         * 为 HTML 标签字符串生成语法高亮的 SpannableString
+         */
+        private fun highlightTagHtml(context: Context, tagHtml: String): SpannableStringBuilder {
+            val sb = SpannableStringBuilder()
+            val tagColor = ContextCompat.getColor(context, R.color.html_tag_color)
+            val attrColor = ContextCompat.getColor(context, R.color.html_attr_color)
+            val valueColor = ContextCompat.getColor(context, R.color.html_value_color)
+            val textColor = ContextCompat.getColor(context, R.color.html_text_color)
+
+            val pattern = Pattern.compile(
+                "(</?)" +
+                "|(/?>)" +
+                "|([a-zA-Z][\\w-]*)" +
+                "|(=\"[^\"]*\")" +
+                "|(='[^']*')" +
+                "|(=)"
+            )
+            val matcher = pattern.matcher(tagHtml)
+            var lastEnd = 0
+            var afterEquals = false
+
+            while (matcher.find()) {
+                if (matcher.start() > lastEnd) {
+                    val between = tagHtml.substring(lastEnd, matcher.start())
+                    sb.append(between)
+                }
+
+                val bracketOpen = matcher.group(1)
+                val bracketClose = matcher.group(2)
+                val nameToken = matcher.group(3)
+                val quotedDValue = matcher.group(4)
+                val quotedSValue = matcher.group(5)
+                val eqSign = matcher.group(6)
+
+                when {
+                    bracketOpen != null -> {
+                        val s = SpannableStringBuilder(bracketOpen)
+                        s.setSpan(ForegroundColorSpan(textColor), 0, s.length, 0)
+                        sb.append(s)
+                    }
+                    bracketClose != null -> {
+                        val s = SpannableStringBuilder(bracketClose)
+                        s.setSpan(ForegroundColorSpan(textColor), 0, s.length, 0)
+                        sb.append(s)
+                    }
+                    afterEquals -> {
+                        if (quotedDValue != null) {
+                            val s = SpannableStringBuilder(quotedDValue)
+                            s.setSpan(ForegroundColorSpan(valueColor), 0, s.length, 0)
+                            sb.append(s)
+                        } else if (quotedSValue != null) {
+                            val s = SpannableStringBuilder(quotedSValue)
+                            s.setSpan(ForegroundColorSpan(valueColor), 0, s.length, 0)
+                            sb.append(s)
+                        } else if (nameToken != null) {
+                            val s = SpannableStringBuilder(nameToken)
+                            s.setSpan(ForegroundColorSpan(valueColor), 0, s.length, 0)
+                            sb.append(s)
+                        }
+                        afterEquals = false
+                    }
+                    quotedDValue != null -> {
+                        val s = SpannableStringBuilder(quotedDValue)
+                        s.setSpan(ForegroundColorSpan(valueColor), 0, s.length, 0)
+                        sb.append(s)
+                    }
+                    quotedSValue != null -> {
+                        val s = SpannableStringBuilder(quotedSValue)
+                        s.setSpan(ForegroundColorSpan(valueColor), 0, s.length, 0)
+                        sb.append(s)
+                    }
+                    eqSign != null -> {
+                        val s = SpannableStringBuilder(eqSign)
+                        s.setSpan(ForegroundColorSpan(textColor), 0, s.length, 0)
+                        sb.append(s)
+                        afterEquals = true
+                    }
+                    nameToken != null -> {
+                        val before = tagHtml.substring(0, matcher.start())
+                        val prevChar = before.takeLastWhile { it == ' ' || it == '\t' }.let {
+                            before.dropLast(it.length).lastOrNull()
+                        }
+                        val isAttributeName = prevChar == ' ' || prevChar == '\t' || prevChar == '\n'
+                        if (isAttributeName) {
+                            val s = SpannableStringBuilder(nameToken)
+                            s.setSpan(ForegroundColorSpan(attrColor), 0, s.length, 0)
+                            sb.append(s)
+                        } else {
+                            val s = SpannableStringBuilder(nameToken)
+                            s.setSpan(ForegroundColorSpan(tagColor), 0, s.length, 0)
+                            sb.append(s)
+                        }
+                    }
+                }
+                lastEnd = matcher.end()
+            }
+            if (lastEnd < tagHtml.length) {
+                sb.append(tagHtml.substring(lastEnd))
+            }
+            return sb
+        }
+
+        private fun buildJsoupSelector(element: Element): String {
+            val parts = mutableListOf<String>()
+            var current: Element? = element
+            while (current != null && current.tagName() != "body" && current.tagName() != "html") {
+                val tag = current!!.tagName()
+                val sb = StringBuilder(tag)
+                if (current!!.id().isNotEmpty()) {
+                    sb.append("#${current!!.id()}")
+                } else {
+                    val classes = current!!.classNames()
+                    if (classes.isNotEmpty()) {
+                        sb.append(".").append(classes.joinToString("."))
+                    }
+                    val parent = current!!.parent()
+                    if (parent != null) {
+                        val sameTagSiblings = parent.children().filter { it.tagName() == tag }
+                        if (sameTagSiblings.size > 1) {
+                            val idx = sameTagSiblings.indexOf(current!!) + 1
+                            sb.append(":nth-child($idx)")
+                        }
+                    }
+                }
+                if (current!!.hasAttr("href") && tag == "a") {
+                    val href = current!!.attr("href")
+                    if (href.isNotEmpty()) {
+                        sb.append("[href=\"$href\"]")
+                    }
+                }
+                parts.add(0, sb.toString())
+                current = current!!.parent()
+            }
+            return parts.joinToString(" > ")
+        }
+
+        private fun buildXPath(element: Element): String {
+            val parts = mutableListOf<String>()
+            var current: Element? = element
+            while (current != null && current.tagName() != "body" && current.tagName() != "html") {
+                val tag = current!!.tagName()
+                val predicates = mutableListOf<String>()
+                if (current!!.id().isNotEmpty()) {
+                    predicates.add("@id='${current!!.id()}'")
+                }
+                // 用 normalize-space 精确匹配 class，避免部分匹配
+                val classes = current!!.classNames()
+                if (classes.isNotEmpty()) {
+                    val classPredicates = classes.map {
+                        "contains(concat(' ',normalize-space(@class),' '),' $it ')"
+                    }
+                    predicates.addAll(classPredicates)
+                }
+                for (attr in listOf("href", "src", "title", "alt")) {
+                    if (current!!.hasAttr(attr)) {
+                        val v = current!!.attr(attr)
+                        if (v.isNotEmpty() && v.length <= 50) {
+                            predicates.add("@$attr='$v'")
+                        }
+                    }
+                }
+                // 有同标签兄弟时加 position() 精确区分（即使有 class/属性，同标签仍需位置）
+                val parent = current!!.parent()
+                if (parent != null) {
+                    val sameTagSiblings = parent.children().filter { it.tagName() == tag }
+                    if (sameTagSiblings.size > 1) {
+                        val idx = current!!.elementSiblingIndex() + 1
+                        predicates.add("position()=$idx")
+                    }
+                }
+                val step = if (predicates.isEmpty()) tag else "$tag[${predicates.joinToString(" and ")}]"
+                parts.add(0, step)
+                current = current!!.parent()
+            }
+            return "//" + parts.joinToString("/")
+        }
+
+        /**
+         * 显示 HTML 树结构弹窗（代码浏览器风格，Material 3 样式）
+         *
+         * 设计说明：
+         * - 等宽字体 + 语法高亮，呼应代码编辑器体验
+         * - 带实时搜索过滤、底部缩放控制
+         * - 支持暗色模式（自动跟随系统）
+         */
+        @SuppressLint("ClickableViewAccessibility")
+        fun showHtmlTreeDialog(
+            context: Context,
+            htmlContent: String,
+            onSelectPath: (cssPath: String) -> Unit
+        ) {
+            try {
+                val doc = Jsoup.parse(htmlContent)
+                val rootElement = doc.body()
+
+                if (rootElement.childrenSize() == 0) {
+                    Toast.makeText(context, "未能解析出有效结构", Toast.LENGTH_SHORT).show()
+                    return
+                }
+
+                // ========== 1. 数据节点定义 ==========
+                data class HtmlTreeNode(
+                    val id: Long,              // 唯一标识（递归时生成）
+                    val element: Element,      // Jsoup Element
+                    val depth: Int,            // 缩进层级（从 0 开始）
+                    val selector: String,      // CSS 选择器路径
+                    val hasChildren: Boolean,  // 是否有子标签
+                    val childrenElements: List<Element>, // 子标签列表
+                    var isExpanded: Boolean,   // 是否已展开
+                    val displayText: String,   // 显示的标签文本（含标签名、id、class、属性、文本）
+                    val fullHtml: String       // 完整 outerHtml（长按复制用）
+                )
+
+                // ========== 2. 构建扁平节点列表 ==========
+                val nodeList = mutableListOf<HtmlTreeNode>()
+                var idCounter = 0L
+
+                /**
+                 * 将 element 及其子节点添加到 nodeList（一次性扁平化）
+                 * 初始阶段：父元素节点默认折叠（isExpanded=false），只添加一层
+                 * 但为了初始可见性，根节点的直接子元素全部展开一级
+                 */
+                fun flattenNode(
+                    element: Element,
+                    depth: Int,
+                    parentSelector: String,
+                    parentExpanded: Boolean
+                ) {
+                    val tagName = element.tagName()
+                    val classStr = if (element.hasAttr("class")) element.className() else ""
+                    val idStr = if (element.id().isNotEmpty()) "#${element.id()}" else ""
+
+                    val currentSelector = buildSelector(element, parentSelector)
+                    val children = element.children()
+                    val hasChildren = children.size > 0
+
+                    // 构建显示文本
+                    val displaySb = StringBuilder()
+                    // 缩进
+                    for (i in 0 until depth) {
+                        displaySb.append("    ")
+                    }
+                    if (hasChildren) displaySb.append("▸ ")
+                    // 标签内容 <tagname#id.class attr="val">
+                    displaySb.append("<")
+                    displaySb.append(tagName)
+                    if (idStr.isNotEmpty()) displaySb.append(idStr)
+                    if (classStr.isNotEmpty()) displaySb.append(".$classStr")
+                    var addedAttr = 0
+                    for (attr in listOf("href", "src", "title", "alt", "data-src", "data-original")) {
+                        if (element.hasAttr(attr)) {
+                            val v = element.attr(attr)
+                            if (v.length <= 25) {
+                                displaySb.append(" $attr=\"$v\"")
+                            } else {
+                                displaySb.append(" $attr=\"${v.take(22)}...\"")
+                            }
+                            addedAttr++
+                            if (addedAttr >= 2) break
+                        }
+                    }
+                    val ownText = element.ownText().trim().take(20)
+                    if (ownText.isNotEmpty()) {
+                        displaySb.append(" «$ownText»")
+                    }
+                    displaySb.append(">")
+
+                    val node = HtmlTreeNode(
+                        id = idCounter++,
+                        element = element,
+                        depth = depth,
+                        selector = currentSelector,
+                        hasChildren = hasChildren,
+                        childrenElements = children,
+                        isExpanded = false,
+                        displayText = displaySb.toString(),
+                        fullHtml = element.outerHtml().take(200)
+                    )
+                    nodeList.add(node)
+
+                    // 只在父节点展开时才递归添加子节点
+                    if (parentExpanded && hasChildren) {
+                        for (child in children) {
+                            flattenNode(child, depth + 1, currentSelector, false)
+                        }
+                    }
+                }
+
+                // 初始构建：根的子节点作为第一层，且默认折叠
+                val rootChildren = rootElement.children()
+                for (child in rootChildren) {
+                    flattenNode(child, 0, "", false)
+                }
+                // ========== 3. 创建 Adapter ==========
+                // 搜索过滤状态（用于实时过滤）
+                val searchQueryLock = mutableListOf("") // 用 list 包裹以便在 adapter 内部读写
+                // 缩放状态（必须在 adapter 之前声明，供匿名类捕获）
+                var currentScale = 1.0f
+                val minScale = 0.6f
+                val maxScale = 2.5f
+
+                class HtmlTreeViewHolder(itemView: TextView) : RecyclerView.ViewHolder(itemView) {
+                    val textView: TextView = itemView
+                }
+
+                // 搜索框（不含回调，回调在 adapter 声明之后设置）
+                val searchEditText = EditText(context).apply {
+                    hint = "搜索标签名 / 属性..."
+                    textSize = 14f
+                    setPadding(16, 12, 16, 12)
+                    isSingleLine = true
+                    setCompoundDrawablesRelativeWithIntrinsicBounds(
+                        android.R.drawable.ic_menu_search, 0, 0, 0
+                    )
+                }
+
+                val adapter = object : RecyclerView.Adapter<HtmlTreeViewHolder>() {
+                    // 过滤后的可见节点索引（指向 nodeList）
+                    private var filteredIndices: MutableList<Int>? = null
+
+                    private fun getFilteredList(): List<Int> {
+                        if (searchQueryLock[0].isEmpty()) return emptyList()
+                        if (filteredIndices == null) {
+                            val query = searchQueryLock[0].lowercase()
+                            filteredIndices = nodeList.indices.filter { i ->
+                                nodeList[i].displayText.lowercase().contains(query)
+                            }.toMutableList()
+                        }
+                        return filteredIndices!!
+                    }
+
+                    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): HtmlTreeViewHolder {
+                        val tv = TextView(parent.context).apply {
+                            textSize = 12f * currentScale
+                            setPadding(12, 8, 12, 8)
+                            typeface = Typeface.MONOSPACE
+                        }
+                        return HtmlTreeViewHolder(tv)
+                    }
+
+                    override fun getItemCount(): Int {
+                        return if (searchQueryLock[0].isEmpty()) nodeList.size else getFilteredList().size
+                    }
+
+                    private fun getNode(position: Int): HtmlTreeNode {
+                        return if (searchQueryLock[0].isEmpty()) {
+                            nodeList[position]
+                        } else {
+                            nodeList[getFilteredList()[position]]
+                        }
+                    }
+
+                    override fun onBindViewHolder(holder: HtmlTreeViewHolder, position: Int) {
+                        val node = getNode(position)
+                        val tv = holder.textView
+
+                        // 应用当前缩放（保证滚动刷新后缩放一致）
+                        tv.textSize = 12f * currentScale
+
+                        // 语法高亮显示
+                        tv.text = highlightTagHtml(tv.context, node.displayText)
+
+                        // 行交替背景色（偶数行浅灰，奇数行白色）
+                        val bgColor = if (position % 2 == 0) {
+                            ContextCompat.getColor(tv.context, R.color.html_line_even)
+                        } else {
+                            ContextCompat.getColor(tv.context, android.R.color.transparent)
+                        }
+                        tv.setBackgroundColor(bgColor)
+
+                        // 点击处理
+                        tv.setOnClickListener {
+                            if (node.hasChildren) {
+                                // 搜索模式下展开节点：先退出搜索模式，清空搜索框
+                                if (searchQueryLock[0].isNotEmpty()) {
+                                    searchEditText.setText("")
+                                    return@setOnClickListener
+                                }
+
+                                val realPos = position
+                                val currentPosition = realPos
+                                if (currentPosition == RecyclerView.NO_POSITION) return@setOnClickListener
+
+                                val wasExpanded = node.isExpanded
+                                node.isExpanded = !wasExpanded
+
+                                if (wasExpanded) {
+                                    // 折叠
+                                    val childrenCount = countDescendants(currentPosition)
+                                    nodeList.subList(currentPosition + 1, currentPosition + 1 + childrenCount).clear()
+                                    notifyItemRangeRemoved(currentPosition + 1, childrenCount)
+                                } else {
+                                    // 展开
+                                    val children = node.childrenElements
+                                    val insertIndex = currentPosition + 1
+                                    val childNodes = mutableListOf<HtmlTreeNode>()
+                                    for (child in children) {
+                                        val tagName = child.tagName()
+                                        val classStr = if (child.hasAttr("class")) child.className() else ""
+                                        val idStr = if (child.id().isNotEmpty()) "#${child.id()}" else ""
+                                        val childSelector = buildSelector(child, node.selector)
+                                        val grandChildren = child.children()
+                                        val hasGrandChildren = grandChildren.size > 0
+
+                                        val displaySb = StringBuilder()
+                                        for (i in 0 until node.depth + 1) {
+                                            displaySb.append("    ")
+                                        }
+                                        if (hasGrandChildren) displaySb.append("▸ ")
+                                        displaySb.append("<")
+                                        displaySb.append(tagName)
+                                        if (idStr.isNotEmpty()) displaySb.append(idStr)
+                                        if (classStr.isNotEmpty()) displaySb.append(".$classStr")
+                                        var addedAttr = 0
+                                        for (attr in listOf("href", "src", "title", "alt", "data-src", "data-original")) {
+                                            if (child.hasAttr(attr)) {
+                                                val v = child.attr(attr)
+                                                if (v.length <= 25) {
+                                                    displaySb.append(" $attr=\"$v\"")
+                                                } else {
+                                                    displaySb.append(" $attr=\"${v.take(22)}...\"")
+                                                }
+                                                addedAttr++
+                                                if (addedAttr >= 2) break
+                                            }
+                                        }
+                                        val ownText = child.ownText().trim().take(20)
+                                        if (ownText.isNotEmpty()) {
+                                            displaySb.append(" «$ownText»")
+                                        }
+                                        displaySb.append(">")
+
+                                        childNodes.add(HtmlTreeNode(
+                                            id = idCounter++,
+                                            element = child,
+                                            depth = node.depth + 1,
+                                            selector = childSelector,
+                                            hasChildren = hasGrandChildren,
+                                            childrenElements = grandChildren,
+                                            isExpanded = false,
+                                            displayText = displaySb.toString(),
+                                            fullHtml = child.outerHtml().take(200)
+                                        ))
+                                    }
+                                    nodeList.addAll(insertIndex, childNodes)
+                                    notifyItemRangeInserted(insertIndex, childNodes.size)
+                                }
+                            } else {
+                                // 叶子节点：复制 CSS 选择器
+                                onSelectPath(node.selector)
+                            }
+                        }
+
+                        // 长按处理
+                        tv.setOnLongClickListener {
+                            showRuleChoiceDialog(context, node.selector, buildXPath(node.element))
+                            true
+                        }
+                    }
+
+                    private fun countDescendants(position: Int): Int {
+                        if (position >= nodeList.size) return 0
+                        val startDepth = nodeList[position].depth
+                        var count = 0
+                        for (i in position + 1 until nodeList.size) {
+                            if (nodeList[i].depth <= startDepth) break
+                            count++
+                        }
+                        return count
+                    }
+
+                    // 刷新搜索过滤（外部调用）
+                    fun updateFilter(query: String) {
+                        searchQueryLock[0] = query
+                        filteredIndices = null
+                        notifyDataSetChanged()
+                    }
+                }
+
+                // ========== 4. 构建 UI ==========
+
+                // 缩放状态
+                var currentScale = 1.0f
+                val minScale = 0.6f
+                val maxScale = 2.5f
+
+                // ---------- 搜索框 ----------
+                val searchEditText = EditText(context).apply {
+                    hint = "搜索标签名 / 属性..."
+                    textSize = 14f
+                    setPadding(16, 12, 16, 12)
+                    isSingleLine = true
+                    setCompoundDrawablesRelativeWithIntrinsicBounds(
+                        android.R.drawable.ic_menu_search, 0, 0, 0
+                    )
+                    // 延时搜索
+                    addTextChangedListener(object : android.text.TextWatcher {
+                        override fun afterTextChanged(s: android.text.Editable?) {
+                            adapter.updateFilter(s?.toString() ?: "")
+                        }
+                        override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                        override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+                    })
+                }
+
+                // ---------- 主体 RecyclerView ----------
+                val recyclerView = RecyclerView(context).apply {
+                    layoutManager = LinearLayoutManager(context)
+                    setPadding(0, 0, 0, 0)
+                    addItemDecoration(object : RecyclerView.ItemDecoration() {
+                        override fun getItemOffsets(outRect: android.graphics.Rect, view: android.view.View, parent: RecyclerView, state: RecyclerView.State) {
+                            outRect.bottom = 1 // 行分割线间距
+                        }
+                    })
+                }
+                recyclerView.adapter = adapter
+
+                // ---------- 底部缩放控制 ----------
+                val zoomInBtn = Button(context).apply {
+                    text = "+"
+                    textSize = 18f
+                    setOnClickListener {
+                        currentScale = (currentScale + 0.2f).coerceAtMost(maxScale)
+                        for (i in 0 until recyclerView.childCount) {
+                            val child = recyclerView.getChildAt(i)
+                            if (child is TextView) child.textSize = 12f * currentScale
+                        }
+                    }
+                }
+                val zoomResetBtn = Button(context).apply {
+                    text = "1x"
+                    textSize = 12f
+                    setOnClickListener {
+                        currentScale = 1.0f
+                        for (i in 0 until recyclerView.childCount) {
+                            val child = recyclerView.getChildAt(i)
+                            if (child is TextView) child.textSize = 12f
+                        }
+                    }
+                }
+                val zoomOutBtn = Button(context).apply {
+                    text = "-"
+                    textSize = 18f
+                    setOnClickListener {
+                        currentScale = (currentScale - 0.2f).coerceAtLeast(minScale)
+                        for (i in 0 until recyclerView.childCount) {
+                            val child = recyclerView.getChildAt(i)
+                            if (child is TextView) child.textSize = 12f * currentScale
+                        }
+                    }
+                }
+                val zoomControls = LinearLayout(context).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = android.view.Gravity.CENTER
+                    addView(zoomOutBtn)
+                    addView(zoomResetBtn)
+                    addView(zoomInBtn)
+                }
+
+                // ---------- 整体布局: 搜索 + RecyclerView + 缩放 ----------
+                val mainLayout = LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    layoutParams = ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT
+                    )
+                    addView(searchEditText)
+                    addView(recyclerView, ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT, 450.dpToPx(context)
+                    ))
+                    addView(zoomControls)
+                }
+
+                // ---------- 标题 ----------
+                val titleText = TextView(context).apply {
+                    text = "HTML 结构"
+                    textSize = 20f
+                    typeface = Typeface.DEFAULT_BOLD
+                    setPadding(24, 20, 24, 8)
+                }
+
+                val dialog = MaterialAlertDialogBuilder(context)
+                    .setCustomTitle(titleText)
+                    .setView(mainLayout)
+                    .setPositiveButton("关闭", null)
+                    .show()
+
+            } catch (e: Exception) {
+                Toast.makeText(context, "解析失败: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+
+        /** dp 转 px 辅助 */
+        private fun Int.dpToPx(context: Context): Int {
+            return (this * context.resources.displayMetrics.density).toInt()
+        }
+
+        /**
+         * 长按节点时弹出选择对话框，提供复制 jsoup 规则或 XPath 规则
+         */
+        fun showRuleChoiceDialog(
+            context: Context,
+            jsoupRule: String,
+            xpathRule: String
+        ) {
+            val items = arrayOf("复制 Jsoup 规则 (CSS Selector)", "复制 XPath 规则")
+            MaterialAlertDialogBuilder(context)
+                .setTitle("选择要复制的内容")
+                .setItems(items) { _, which ->
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    when (which) {
+                        0 -> {
+                            val clip = ClipData.newPlainText("Jsoup Rule", jsoupRule)
+                            clipboard.setPrimaryClip(clip)
+                            Toast.makeText(context, "已复制 Jsoup 规则", Toast.LENGTH_SHORT).show()
+                        }
+                        1 -> {
+                            val clip = ClipData.newPlainText("XPath Rule", xpathRule)
+                            clipboard.setPrimaryClip(clip)
+                            Toast.makeText(context, "已复制 XPath 规则", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }
+                .setPositiveButton("取消", null)
+                .show()
+        }
+
+        /**
+         * 递归构建 CSS 选择器路径（已在上面保留，下面有重复定义？）
+         * 注意：buildSelector 方法已在第 653 行定义，此处不再重复
+         */
+
+        /**
+         * 递归构建 CSS 选择器路径
+         */
+        private fun buildSelector(element: Element, parentSelector: String): String {
+            val tag = element.tagName()
+            val parent = element.parent() ?: return tag
+
+            val siblings = parent.children().filter { it.tagName() == tag }
+            val index = if (siblings.size > 1) {
+                ":nth-child(${element.elementSiblingIndex() + 1})"
+            } else ""
+
+            val id = element.id()
+            if (id.isNotEmpty()) {
+                return if (parentSelector.isEmpty()) "#$id" else "$parentSelector > #$id"
+            }
+
+            val classes = element.classNames()
+            val classSelector = if (classes.isNotEmpty()) ".${classes.joinToString(".")}" else ""
+
+            val currentTag = "$tag$index$classSelector"
+            return if (parentSelector.isEmpty()) currentTag else "$parentSelector > $currentTag"
+        }
+    }
+}

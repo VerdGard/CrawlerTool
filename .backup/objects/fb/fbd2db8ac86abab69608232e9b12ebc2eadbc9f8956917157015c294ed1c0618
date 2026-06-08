@@ -1,0 +1,467 @@
+package com.SoloSu.Crawler_tool
+
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.os.Bundle
+import android.view.Menu
+import android.view.MenuItem
+import android.view.inputmethod.EditorInfo
+import android.widget.RadioGroup
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import com.google.android.material.chip.Chip
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.SoloSu.Crawler_tool.databinding.ActivityMainBinding
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+class MainActivity : AppCompatActivity() {
+
+    private var _binding: ActivityMainBinding? = null
+    private val binding: ActivityMainBinding
+        get() = checkNotNull(_binding) { "Binding已被销毁" }
+
+    private val adapter = ResultAdapter()
+
+    private var matchMode: CrawlerEngine.MatchMode = CrawlerEngine.MatchMode.XPath
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        _binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+
+        setupToolbar()
+        setupRecyclerView()
+        setupModeSelector()
+        setupButtons()
+        setupQuickAttrChips()
+        setupExpressionKeyboardAction()
+    }
+
+    private fun setupToolbar() {
+        setSupportActionBar(binding.toolbar)
+        supportActionBar?.setDisplayShowTitleEnabled(true)
+    }
+
+    private fun setupRecyclerView() {
+        binding.recyclerResult.adapter = adapter
+    }
+
+    private fun setupModeSelector() {
+        // 模式切换：Jsoup / XPath 单选按钮
+        // 初始化：默认选中 Jsoup
+        binding.radioJsoup.isChecked = true
+        binding.radioXPath.isChecked = false
+
+        binding.radioJsoup.setOnClickListener {
+            if (matchMode != CrawlerEngine.MatchMode.Jsoup) {
+                updateModeSelection(CrawlerEngine.MatchMode.Jsoup)
+            } else {
+                // 已选中，保持状态不改变
+                binding.radioJsoup.isChecked = true
+            }
+        }
+
+        binding.radioXPath.setOnClickListener {
+            if (matchMode != CrawlerEngine.MatchMode.XPath) {
+                updateModeSelection(CrawlerEngine.MatchMode.XPath)
+            } else {
+                // 已选中，保持状态不改变
+                binding.radioXPath.isChecked = true
+            }
+        }
+    }
+
+    private fun updateModeSelection(mode: CrawlerEngine.MatchMode) {
+        matchMode = mode
+        when (mode) {
+            CrawlerEngine.MatchMode.Jsoup -> {
+                binding.radioJsoup.isChecked = true
+                binding.radioXPath.isChecked = false
+                binding.exprInputLayout.hint = "Jsoup CSS选择器（如 a[href]）"
+                if (binding.etExpression.text.toString().trim() == "//a/@href") {
+                    binding.etExpression.setText("a[href]")
+                }
+            }
+            CrawlerEngine.MatchMode.XPath -> {
+                binding.radioJsoup.isChecked = false
+                binding.radioXPath.isChecked = true
+                binding.exprInputLayout.hint = "XPath表达式（如 //a/@href）"
+                if (binding.etExpression.text.toString().trim() == "a[href]") {
+                    binding.etExpression.setText("//a/@href")
+                }
+            }
+        }
+    }
+
+    private fun setupQuickAttrChips() {
+        val chipClickListener: (android.view.View) -> Unit = { view ->
+            if (view is Chip) {
+                val chipText = view.text.toString()
+                val editable = binding.etExpression.text
+                if (editable != null) {
+                    val cursorPos = binding.etExpression.selectionStart
+                    if (cursorPos in 0..editable.length) {
+                        editable.insert(cursorPos, chipText)
+                        binding.etExpression.setSelection(cursorPos + chipText.length)
+                    } else {
+                        // 无光标信息时直接追加
+                        editable.append(chipText)
+                        binding.etExpression.setSelection(editable.length)
+                    }
+                }
+            }
+        }
+
+        binding.chipTitle.setOnClickListener(chipClickListener)
+        binding.chipHref.setOnClickListener(chipClickListener)
+        binding.chipDataOriginal.setOnClickListener(chipClickListener)
+        binding.chipDataSrc.setOnClickListener(chipClickListener)
+        binding.chipText.setOnClickListener(chipClickListener)
+    }
+
+    private fun setupExpressionKeyboardAction() {
+        binding.etExpression.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_DONE || actionId == EditorInfo.IME_ACTION_GO) {
+                performMatch()
+                true
+            } else false
+        }
+    }
+
+    private fun setupButtons() {
+        binding.btnMatch.setOnClickListener { performMatch() }
+        binding.btnClear.setOnClickListener {
+            adapter.submitList(emptyList())
+            binding.tvStatus.text = "已清空"
+        }
+        binding.btnCopyAll.setOnClickListener { copyRuleExpression() }
+    }
+
+    private fun performMatch() {
+        val url = binding.etUrl.text.toString().trim()
+        val expression = binding.etExpression.text.toString().trim()
+
+        // 基本校验
+        if (url.isBlank() || url == "https://") {
+            Toast.makeText(this, "请输入有效的URL", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (expression.isBlank()) {
+            Toast.makeText(this, "请输入匹配表达式", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        binding.btnMatch.isEnabled = false
+        binding.tvStatus.text = "正在请求并匹配..."
+
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                CrawlerEngine.fetchAndMatch(
+                    url = url,
+                    expression = expression,
+                    mode = matchMode
+                )
+            }
+
+            binding.btnMatch.isEnabled = true
+
+            result.fold(
+                onSuccess = { items ->
+                    if (items.isEmpty()) {
+                        binding.tvStatus.text = "匹配完成，未找到结果"
+                        adapter.submitList(emptyList())
+                        Toast.makeText(this@MainActivity, "未匹配到任何结果", Toast.LENGTH_SHORT).show()
+                    } else {
+                        val resultItems = items.mapIndexed { index, content ->
+                            ResultItem(index = index + 1, content = content)
+                        }
+                        adapter.submitList(resultItems)
+                        binding.tvStatus.text = "匹配完成，共 ${items.size} 条结果"
+                    }
+                },
+                onFailure = { error ->
+                    binding.tvStatus.text = "匹配失败"
+                    adapter.submitList(emptyList())
+                    showErrorDialog("匹配失败", error.message ?: "未知错误")
+                }
+            )
+        }
+    }
+
+    private fun copyRuleExpression() {
+        val expression = binding.etExpression.text.toString().trim()
+        if (expression.isEmpty()) {
+            Toast.makeText(this, "规则表达式为空，无可复制的内容", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val clip = ClipData.newPlainText("Crawler Rule", expression)
+        clipboard.setPrimaryClip(clip)
+        Toast.makeText(this, "已复制规则表达式", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun showErrorDialog(title: String, message: String) {
+        MaterialAlertDialogBuilder(this)
+            .setTitle(title)
+            .setMessage(message)
+            .setPositiveButton("确定", null)
+            .setIcon(android.R.drawable.ic_dialog_alert)
+            .show()
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.toolbar_menu, menu)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_about -> {
+                MaterialAlertDialogBuilder(this)
+                    .setTitle("关于 Crawler Tool")
+                    .setMessage("Crawler Tool v1.0\n\n一个轻量级网页数据爬取工具，支持 Jsoup CSS 选择器和 XPath 两种匹配方式。\n\nBy: SoloSu")
+                    .setPositiveButton("确定", null)
+                    .show()
+                true
+            }
+            R.id.action_jsoup_rules -> {
+                showMdDoc("Jsoup规则 - 使用指南", "jsoup_rules.md")
+                true
+            }
+            R.id.action_xpath_rules -> {
+                showMdDoc("XPath规则 - 使用指南", "xpath_rules.md")
+                true
+            }
+            R.id.action_settings -> {
+                Toast.makeText(this, "设置开发中...", Toast.LENGTH_SHORT).show()
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
+    }
+
+    /**
+     * 从assets读取MD文档，转HTML后用WebView显示在Dialog中
+     */
+    private fun showMdDoc(title: String, assetFileName: String) {
+        lifecycleScope.launch {
+            val htmlContent = withContext(Dispatchers.IO) {
+                try {
+                    val mdText = assets.open(assetFileName).bufferedReader().use { it.readText() }
+                    mdToHtml(mdText)
+                } catch (e: Exception) {
+                    "<html><body><h2>加载失败</h2><p>${e.message}</p></body></html>"
+                }
+            }
+
+            val webView = android.webkit.WebView(this@MainActivity).apply {
+                settings.javaScriptEnabled = false
+                settings.allowFileAccess = false
+                settings.loadWithOverviewMode = true
+                settings.useWideViewPort = true
+                setBackgroundColor(android.graphics.Color.parseColor("#FFEEF1F5"))
+                loadDataWithBaseURL(null, htmlContent, "text/html", "UTF-8", null)
+            }
+
+            MaterialAlertDialogBuilder(this@MainActivity)
+                .setTitle(title)
+                .setView(webView)
+                .setPositiveButton("关闭", null)
+                .show()
+        }
+    }
+
+    /**
+     * 将简单的 Markdown 文本转换为 HTML
+     */
+    private fun mdToHtml(md: String): String {
+        val sb = StringBuilder()
+        sb.append("""
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <style>
+                    body {
+                        font-family: -apple-system, system-ui, sans-serif;
+                        font-size: 14px;
+                        line-height: 1.6;
+                        color: #1C1B1F;
+                        padding: 8px 12px;
+                        background: #F8F9FF;
+                    }
+                    h1 { font-size: 18px; color: #1565C0; margin: 12px 0 8px; padding-bottom: 4px; border-bottom: 1px solid #DEDEDE; }
+                    h2 { font-size: 16px; color: #1565C0; margin: 10px 0 6px; }
+                    h3 { font-size: 14px; color: #1565C0; margin: 8px 0 4px; }
+                    p { margin: 6px 0; }
+                    code {
+                        background: #E8F0FE;
+                        color: #C62828;
+                        padding: 1px 5px;
+                        border-radius: 3px;
+                        font-family: monospace;
+                        font-size: 12px;
+                    }
+                    pre {
+                        background: #F5F7FA;
+                        border: 1px solid #DEDEDE;
+                        border-radius: 6px;
+                        padding: 8px 12px;
+                        overflow-x: auto;
+                        font-size: 12px;
+                        line-height: 1.5;
+                    }
+                    pre code {
+                        background: none;
+                        color: #333333;
+                        padding: 0;
+                    }
+                    table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        margin: 8px 0;
+                        font-size: 12px;
+                    }
+                    th {
+                        background: #1565C0;
+                        color: white;
+                        padding: 6px 8px;
+                        text-align: left;
+                    }
+                    td {
+                        border: 1px solid #DEDEDE;
+                        padding: 5px 8px;
+                    }
+                    tr:nth-child(even) { background: #F5F7FA; }
+                    blockquote {
+                        border-left: 3px solid #1565C0;
+                        margin: 8px 0;
+                        padding: 4px 12px;
+                        background: #E8F0FE;
+                        border-radius: 0 4px 4px 0;
+                    }
+                    ul, ol { margin: 4px 0; padding-left: 20px; }
+                    li { margin: 2px 0; }
+                </style>
+            </head>
+            <body>
+        """.trimIndent())
+
+        // 简易 Markdown → HTML 转换（支持表格、代码块、标题、列表等）
+        val lines = md.split("\n")
+        var inCodeBlock = false
+        var inTable = false
+        var tableSb = StringBuilder()
+        var isFirstTableRow = true
+
+        for (line in lines) {
+            when {
+                // 代码块开始/结束
+                line.trimStart().startsWith("```") -> {
+                    if (inCodeBlock) {
+                        sb.append("</code></pre>\n")
+                        inCodeBlock = false
+                    } else {
+                        sb.append("<pre><code>")
+                        inCodeBlock = true
+                    }
+                    continue
+                }
+                inCodeBlock -> {
+                    sb.append(escapeHtml(line)).append("\n")
+                    continue
+                }
+                // 表格行
+                line.trimStart().startsWith("|") && line.trimEnd().endsWith("|") -> {
+                    val cells = line.split("|").filter { it.isNotBlank() }
+                    if (cells.isEmpty() || cells.all { it.trim().all { c -> c == '-' || c == ':' } }) {
+                        // 分隔行，跳过
+                        continue
+                    }
+                    if (!inTable) {
+                        inTable = true
+                        isFirstTableRow = true
+                        tableSb = StringBuilder("<table>")
+                    }
+                    if (isFirstTableRow) {
+                        tableSb.append("<thead><tr>")
+                        for (cell in cells) {
+                            tableSb.append("<th>${escapeHtml(cell.trim())}</th>")
+                        }
+                        tableSb.append("</tr></thead><tbody>")
+                        isFirstTableRow = false
+                    } else {
+                        tableSb.append("<tr>")
+                        for (cell in cells) {
+                            tableSb.append("<td>${escapeHtml(cell.trim())}</td>")
+                        }
+                        tableSb.append("</tr>")
+                    }
+                    continue
+                }
+                line.isBlank() && inTable -> {
+                    inTable = false
+                    tableSb.append("</tbody></table>")
+                    sb.append(tableSb.toString())
+                    tableSb = StringBuilder()
+                    continue
+                }
+                inTable -> {
+                    // 非空行且不在表格模式
+                    continue
+                }
+            }
+
+            // 处理标题
+            when {
+                line.startsWith("### ") -> sb.append("<h3>${escapeHtml(line.removePrefix("### "))}</h3>\n")
+                line.startsWith("## ") -> sb.append("<h2>${escapeHtml(line.removePrefix("## "))}</h2>\n")
+                line.startsWith("# ") -> sb.append("<h1>${escapeHtml(line.removePrefix("# "))}</h1>\n")
+                line.startsWith("> ") -> sb.append("<blockquote>${escapeHtml(line.removePrefix("> "))}</blockquote>\n")
+                line.startsWith("- ") || line.startsWith("* ") -> sb.append("<li>${escapeHtml(line.removePrefix("- ").removePrefix("* "))}</li>\n")
+                line.matches(Regex("^\\d+\\.\\s.*")) -> sb.append("<li>${escapeHtml(line.replaceFirst(Regex("^\\d+\\.\\s"), ""))}</li>\n")
+                line.isBlank() -> sb.append("<br/>\n")
+                else -> {
+                    // 内联 code 标记
+                    var processed = escapeHtml(line)
+                    // 处理 `code`
+                    processed = processed.replace(Regex("`([^`]+)`")) { match ->
+                        "<code>${match.groupValues[1]}</code>"
+                    }
+                    // 处理 **bold**
+                    processed = processed.replace(Regex("\\*\\*(.+?)\\*\\*")) { match ->
+                        "<strong>${match.groupValues[1]}</strong>"
+                    }
+                    sb.append("<p>$processed</p>\n")
+                }
+            }
+        }
+
+        // 如果表格未闭合
+        if (inTable) {
+            tableSb.append("</tbody></table>")
+            sb.append(tableSb.toString())
+        }
+
+        sb.append("</body></html>")
+        return sb.toString()
+    }
+
+    private fun escapeHtml(text: String): String {
+        return text
+            .replace("&", "&" + "amp;")
+            .replace("<", "&" + "lt;")
+            .replace(">", "&" + "gt;")
+            .replace("\"", "&" + "quot;")
+    }
+    override fun onDestroy() {
+        super.onDestroy()
+        _binding = null
+    }
+}

@@ -1,0 +1,258 @@
+package com.SoloSu.Crawler_tool
+
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.os.Bundle
+import android.view.Menu
+import android.view.MenuItem
+import android.view.inputmethod.EditorInfo
+import android.widget.RadioGroup
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import com.google.android.material.chip.Chip
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.SoloSu.Crawler_tool.databinding.ActivityMainBinding
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+class MainActivity : AppCompatActivity() {
+
+    private var _binding: ActivityMainBinding? = null
+    private val binding: ActivityMainBinding
+        get() = checkNotNull(_binding) { "Binding已被销毁" }
+
+    private val adapter = ResultAdapter()
+
+    private var matchMode: CrawlerEngine.MatchMode = CrawlerEngine.MatchMode.Jsoup
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        _binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
+
+        setupToolbar()
+        setupRecyclerView()
+        setupModeSelector()
+        setupButtons()
+        setupQuickAttrChips()
+        setupExpressionKeyboardAction()
+    }
+
+    private fun setupToolbar() {
+        setSupportActionBar(binding.toolbar)
+        supportActionBar?.setDisplayShowTitleEnabled(true)
+    }
+
+    private fun setupRecyclerView() {
+        binding.recyclerResult.adapter = adapter
+    }
+
+    private fun setupModeSelector() {
+        // 模式切换：Jsoup / XPath RadioGroup
+        binding.modeRadioGroup.setOnCheckedChangeListener { _, checkedId ->
+            when (checkedId) {
+                R.id.radioJsoup -> {
+                    matchMode = CrawlerEngine.MatchMode.Jsoup
+                    binding.exprInputLayout.hint = "Jsoup CSS选择器（如 a[href]）"
+                    if (binding.etExpression.text.toString().trim() == "//a/@href") {
+                        binding.etExpression.setText("a[href]")
+                    }
+                }
+                R.id.radioXPath -> {
+                    matchMode = CrawlerEngine.MatchMode.XPath
+                    binding.exprInputLayout.hint = "XPath表达式（如 //a/@href）"
+                    if (binding.etExpression.text.toString().trim() == "a[href]") {
+                        binding.etExpression.setText("//a/@href")
+                    }
+                }
+            }
+        }
+    }
+
+    private fun setupQuickAttrChips() {
+        val chipClickListener: (android.view.View) -> Unit = { view ->
+            if (view is Chip) {
+                val currentText = binding.etExpression.text.toString()
+                val chipText = view.text.toString()
+                val newText = if (currentText.contains("[")) {
+                    // 给现有选择器追加属性
+                    val base = currentText.substringBeforeLast("[")
+                    val existingAttrs = currentText.substringAfterLast("[").substringBeforeLast("]")
+                    val attrs = existingAttrs.split(",", " ").map { it.trim() }.filter { it.isNotEmpty() }.toMutableList()
+
+                    when {
+                        chipText.startsWith("@") -> {
+                            // 对于 XPath 或 Jsoup 属性语法
+                            val attrName = chipText.removePrefix("@")
+                            if (attrName !in attrs) attrs.add(attrName)
+                        }
+                        chipText == "text()" -> {
+                            if ("text()" !in attrs) attrs.add("text()")
+                        }
+                        else -> {
+                            if (chipText !in attrs) attrs.add(chipText)
+                        }
+                    }
+                    "$base[${attrs.joinToString(", ")}]"
+                } else {
+                    // 直接用当前模式构建表达式
+                    when {
+                        chipText.startsWith("@") -> {
+                            val attrName = chipText.removePrefix("@")
+                            if (matchMode is CrawlerEngine.MatchMode.Jsoup) {
+                                "a[$attrName]"
+                            } else {
+                                "//a/@$attrName"
+                            }
+                        }
+                        chipText == "text()" -> {
+                            if (matchMode is CrawlerEngine.MatchMode.Jsoup) {
+                                "a"
+                            } else {
+                                "//a/text()"
+                            }
+                        }
+                        else -> {
+                            if (matchMode is CrawlerEngine.MatchMode.Jsoup) {
+                                "a[$chipText]"
+                            } else {
+                                "//a/@$chipText"
+                            }
+                        }
+                    }
+                }
+                binding.etExpression.setText(newText)
+                binding.etExpression.setSelection(newText.length)
+            }
+        }
+
+        binding.chipTitle.setOnClickListener(chipClickListener)
+        binding.chipHref.setOnClickListener(chipClickListener)
+        binding.chipDataOriginal.setOnClickListener(chipClickListener)
+        binding.chipDataSrc.setOnClickListener(chipClickListener)
+        binding.chipText.setOnClickListener(chipClickListener)
+    }
+
+    private fun setupExpressionKeyboardAction() {
+        binding.etExpression.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_DONE || actionId == EditorInfo.IME_ACTION_GO) {
+                performMatch()
+                true
+            } else false
+        }
+    }
+
+    private fun setupButtons() {
+        binding.btnMatch.setOnClickListener { performMatch() }
+        binding.btnClear.setOnClickListener {
+            adapter.submitList(emptyList())
+            binding.tvStatus.text = "已清空"
+        }
+        binding.btnCopyAll.setOnClickListener { copyAllResults() }
+    }
+
+    private fun performMatch() {
+        val url = binding.etUrl.text.toString().trim()
+        val expression = binding.etExpression.text.toString().trim()
+
+        // 基本校验
+        if (url.isBlank() || url == "https://") {
+            Toast.makeText(this, "请输入有效的URL", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (expression.isBlank()) {
+            Toast.makeText(this, "请输入匹配表达式", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        binding.btnMatch.isEnabled = false
+        binding.tvStatus.text = "正在请求并匹配..."
+
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                CrawlerEngine.fetchAndMatch(
+                    url = url,
+                    expression = expression,
+                    mode = matchMode
+                )
+            }
+
+            binding.btnMatch.isEnabled = true
+
+            result.fold(
+                onSuccess = { items ->
+                    if (items.isEmpty()) {
+                        binding.tvStatus.text = "匹配完成，未找到结果"
+                        adapter.submitList(emptyList())
+                        Toast.makeText(this@MainActivity, "未匹配到任何结果", Toast.LENGTH_SHORT).show()
+                    } else {
+                        val resultItems = items.mapIndexed { index, content ->
+                            ResultItem(index = index + 1, content = content)
+                        }
+                        adapter.submitList(resultItems)
+                        binding.tvStatus.text = "匹配完成，共 ${items.size} 条结果"
+                    }
+                },
+                onFailure = { error ->
+                    binding.tvStatus.text = "匹配失败"
+                    adapter.submitList(emptyList())
+                    showErrorDialog("匹配失败", error.message ?: "未知错误")
+                }
+            )
+        }
+    }
+
+    private fun copyAllResults() {
+        val items = adapter.currentList
+        if (items.isEmpty()) {
+            Toast.makeText(this, "没有可复制的结果", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val text = items.joinToString("\n") { "[${it.index}] ${it.content}" }
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val clip = ClipData.newPlainText("Crawler Results", text)
+        clipboard.setPrimaryClip(clip)
+        Toast.makeText(this, "已复制 ${items.size} 条结果", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun showErrorDialog(title: String, message: String) {
+        MaterialAlertDialogBuilder(this)
+            .setTitle(title)
+            .setMessage(message)
+            .setPositiveButton("确定", null)
+            .setIcon(android.R.drawable.ic_dialog_alert)
+            .show()
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.toolbar_menu, menu)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_about -> {
+                MaterialAlertDialogBuilder(this)
+                    .setTitle("关于 Crawler Tool")
+                    .setMessage("Crawler Tool v1.0\n\n一个轻量级网页数据爬取工具，支持 Jsoup CSS 选择器和 XPath 两种匹配方式。\n\nBy: SoloSu")
+                    .setPositiveButton("确定", null)
+                    .show()
+                true
+            }
+            R.id.action_settings -> {
+                Toast.makeText(this, "设置开发中...", Toast.LENGTH_SHORT).show()
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        _binding = null
+    }
+}
