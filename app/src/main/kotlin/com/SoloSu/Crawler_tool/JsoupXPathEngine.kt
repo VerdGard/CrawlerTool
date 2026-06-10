@@ -14,8 +14,11 @@ import org.jsoup.select.Elements
  * - 属性访问 `//a/@href`, `//div/text()`
  * - 谓词 `[@class='foo']`, `[@attr]`, `[n]`,
  *   `[contains(@class,'foo')]`, `[starts-with(@attr,'val')]`,
- *   `[last()]`, `[position()<n]`, `[normalize-space()]`
- * - 复合谓词 `[@class='a' and @id='b']`, `[@class='a' or @class='b']`
+ *   `[last()]`, `[position()<n]`, `[normalize-space()]`,
+ *   `[position()]`, `[text()]`, `[not(@attr)]`, `[not(@attr='val')]`
+ * - 复合谓词 `[@class='a' and @id='b']`, `[@class='a' or @class='b']`,
+ *   `[@class='row' and position()=2]`, `[@class='row'][2]`
+ * - 显式轴 `child::div`, `descendant::a`
  * - 通配符 `*`, 父节点 `..`, 当前节点 `.`
  * - 单引号/双引号均可
  */
@@ -126,6 +129,11 @@ object JsoupXPathEngine {
         override fun matches(el: Element, i: Int, siblings: List<Element>) = i == index
     }
 
+    /** 恒为 true 的谓词：用于 [position()] 裸调用语法糖 */
+    private class PositionAnyPredicate : PredicateExpr() {
+        override fun matches(el: Element, i: Int, siblings: List<Element>) = true
+    }
+
     private class LastPredicate : PredicateExpr() {
         override fun matches(el: Element, i: Int, siblings: List<Element>) =
             i == siblings.size - 1
@@ -200,6 +208,12 @@ object JsoupXPathEngine {
             left.matches(el, i, siblings) || right.matches(el, i, siblings)
     }
 
+    /** not() 反转谓词 */
+    private class NotPredicate(val inner: PredicateExpr) : PredicateExpr() {
+        override fun matches(el: Element, i: Int, siblings: List<Element>) =
+            !inner.matches(el, i, siblings)
+    }
+
     // ─── 步骤解析 ──────────────────────────────────────────────
 
     /**
@@ -229,9 +243,17 @@ object JsoupXPathEngine {
 
             if (pos >= expr.length) break
 
-            // 提取 nodeTest + 谓词
+            // 支持 child:: 和 descendant:: 显式轴前缀
             val remaining = expr.substring(pos)
-            val parsed = parseNodeTestAndPredicates(remaining)
+            val explicitAxisMatch = Regex("^(child|descendant)\\s*::").find(remaining)
+            if (explicitAxisMatch != null) {
+                val axisName = explicitAxisMatch.groupValues[1]
+                axis = if (axisName == "descendant") Axis.DESCENDANT else Axis.CHILD
+                pos += explicitAxisMatch.value.length
+            }
+
+            // 提取 nodeTest + 谓词
+            val parsed = parseNodeTestAndPredicates(expr.substring(pos))
             steps.add(
                 XPathStep(
                     axis = axis,
@@ -464,16 +486,29 @@ object JsoupXPathEngine {
         return input.substring(startIdx + 1, end) to (end + 1)
     }
 
-    /** 解析单个谓词条件 */
+    /** 解析单个谓词条件（含 not() 反转包装） */
     private fun parseSinglePredicate(expr: String): PredicateExpr? {
-        val e = expr.trim()
+        var e = expr.trim()
         if (e.isEmpty()) return null
+
+        // not(...) 反转内部谓词
+        val notMatch = Regex("not\\s*\\((.+)\\)\\s*$").find(e)
+        if (notMatch != null) {
+            val inner = notMatch.groupValues[1].trim()
+            val innerPred = parseSinglePredicate(inner)
+            if (innerPred != null) return NotPredicate(innerPred)
+        }
 
         // [n] — 纯数字索引
         e.toIntOrNull()?.let { n -> return IndexPredicate(n - 1) }
 
         // [last()]
         if (e == "last()" || e.matches(Regex("last\\(\\)\\s*"))) return LastPredicate()
+
+        // [position()] 裸调用 — 匹配所有节点（语法糖）
+        if (e == "position()" || e.matches(Regex("position\\s*\\(\\s*\\)\\s*"))) {
+            return PositionAnyPredicate()
+        }
 
         // [position() op value]
         val posMatch = Regex("position\\s*\\(\\s*\\)\\s*([=!<>]=?)\\s*(\\d+)").find(e)
@@ -509,6 +544,11 @@ object JsoupXPathEngine {
         val textEqMatch = Regex("(?:text\\(\\)|\\.)\\s*=\\s*['\"]([^'\"]*)['\"]").find(e)
         if (textEqMatch != null) {
             return TextEqualsPredicate(textEqMatch.groupValues[1])
+        }
+
+        // [text()] — 有非空文本内容的节点（语法糖）
+        if (e == "text()" || e.matches(Regex("text\\(\\)\\s*"))) {
+            return TextNormalizeSpacePredicate()
         }
 
         // [contains(text(),'val')]

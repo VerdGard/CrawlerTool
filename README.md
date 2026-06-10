@@ -87,13 +87,16 @@ CrawlerTool/
 | 标签选择 | `//div`, `/html/body` | 任意层级 / 直接子级 |
 | 属性访问 | `//a/@href`, `//*[@id]` | 提取属性值或检测属性存在 |
 | 文本获取 | `//div/text()`, `//div/normalize-space()` | 提取文本节点 |
-| 位置谓词 | `[n]`, `[last()]`, `[position()<3]` | 按位置过滤 |
-| 属性相等 | `[@class='foo']`, `[@id="bar"]` | 支持单/双引号 |
+| 位置谓词 | `[n]`, `[last()]`, `[position()<3]`, `[position()]` | 按位置过滤 |
+| 属性相等/不等 | `[@class='foo']`, `[@class!='bar']` | 支持单/双引号 |
 | 属性包含 | `[contains(@class, 'list')]` | 字符串包含 |
 | 属性开头 | `[starts-with(@href, 'https')]` | 字符串前缀匹配 |
-| 文本匹配 | `[text()='标题']`, `[contains(text(),'关键')]` | 文本内容过滤 |
+| 文本匹配 | `[text()='标题']`, `[contains(text(),'关键')]`, `[text()]` | 文本内容过滤 |
 | 逻辑组合 | `[@class='a' and @id='b']`, `[@class='a' or @class='b']` | 与/或 |
+| 否定谓词 | `[not(@class)]`, `[not(contains(@class,'hidden'))]` | 取反 |
 | 通配符/父级 | `*`, `..`, `.` | 通配、父节点、当前节点 |
+| 显式轴 | `child::div`, `descendant::span` | 显式指定轴 |
+| 复合谓词 | `[@class='row' and position()=2]`, `[@class='row'][2]` | 两写法等价 |
 
 **表达式缓存：** 自动缓存最近 16 个已解析的 XPath 表达式，避免重复解析开销。
 

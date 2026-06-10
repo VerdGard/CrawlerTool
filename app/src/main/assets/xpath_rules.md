@@ -19,11 +19,21 @@ XPath 是一种在 XML/HTML 文档中查找信息的语言。本工具先将 HTM
 |--------|------|
 | `//div[@class]` | 选取所有带 class 属性的 div |
 | `//div[@class="title"]` | 选取 class 精确等于 title 的 div |
+| `//div[@class!='bar']` | class 不等于 bar 的 div |
 | `//div[contains(@class, "title")]` | class 包含 title 的 div |
 | `//a[position()=1]` | 第一个 a 标签 |
 | `//a[position()<3]` | 前两个 a 标签 |
+| `//a[position()]` | 所有 a 标签（[position()] 恒为 true） |
 | `//ul/li[last()]` | 最后一个 li |
+| `//li[2]` | 简写：第二个 li |
 | `//*[@id="main"]` | id 为 main 的任何元素 |
+| `//div[@class='a' and @id='b']` | 多个条件同时满足（and） |
+| `//div[@class='a' or @class='b']` | 满足任一条件（or） |
+| `//div[not(@class='hidden')]` | class 不等于 hidden 的 div |
+| `//a[not(contains(@class,'disabled'))]` | class 不包含 disabled 的链接 |
+| `[text()='标题']`, `[contains(text(),'关键')]`, `[text()]` | 文本内容过滤（[text()] 选中非空文本节点） |
+| `[@class='row' and position()=2]` 等价于 `[@class='row'][2]` | 两写法等价 |
+| `child::div`, `descendant::span` | 显式轴前缀 |
 
 ## 常用函数
 
@@ -54,6 +64,11 @@ XPath 是一种在 XML/HTML 文档中查找信息的语言。本工具先将 HTM
 - `//div[@class="container"]//a` → 容器内的所有链接
 - `//ul/li/a` → 列表中的链接
 - `//a[starts-with(@href, "/detail")]` → 以 /detail 开头的链接
+- `//div[@class='list']/div[@class='row'][2]` → 第二个 row 行
+- `//div[@class='list']/div[not(@class='hidden')]` → 排除隐藏行
+- `//ul/li[position()]` → 所有 li（含文本的）
+- `//div[@class='item' and position()<4]` → 前 3 个 item
+- `child::div` 等价于 `/div`, `descendant::a` 等价于 `//a`
 
 ## 快捷标签对应
 

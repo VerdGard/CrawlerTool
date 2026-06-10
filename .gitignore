@@ -24,3 +24,13 @@ captures/
 # 密钥文件（如果有）
 *.jks
 *.keystore
+
+# 忽略所有 .backup 文件夹
+.backup/
+
+# 忽略所有以 .backup 结尾的文件
+*.backup
+
+# 也建议忽略其他常见的备份文件
+*.orig
+*.bak

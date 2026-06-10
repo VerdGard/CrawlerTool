@@ -467,6 +467,13 @@ object HtmlTreeDialog {
 
     /**
      * 从 element 向上构建简洁 XPath
+     *
+     * 生成规则（优先级递减）：
+     * 1. 有 id → `[@id='xxx']`
+     * 2. 有 class → `[@class='a b']`
+     * 3. 有独特文本 → `[text()='xxx']`
+     * 4. 同标签兄弟 → `[n]` 精确索引
+     * 5. 有 data-* 属性 → `[@data-xxx='val']`
      */
     private fun buildXPathSimple(element: Element): String {
         val parts = mutableListOf<String>()
@@ -475,19 +482,52 @@ object HtmlTreeDialog {
             val tag = cur!!.tagNameLower()
             val preds = mutableListOf<String>()
 
+            // 1. id 属性（唯一标识，优先级最高）
             if (cur!!.hasAttr("id")) {
                 preds.add("@id='${cur!!.attr("id")}'")
             }
+
+            // 2. class 属性
             val classStr = cur!!.classes()
             if (classStr.isNotEmpty()) {
                 preds.add("@class='$classStr'")
             }
-            // 同标签兄弟需加位置
+
+            // 3. 独特文本内容（非空且建议长度 >3，避免过短文本误匹配）
+            val ownText = cur!!.ownTextTrim()
+            if (preds.isEmpty() && ownText.length > 3) {
+                // 过滤文本中的单引号避免破坏 XPath 语法
+                val safeText = ownText.filter { it != '\'' }
+                preds.add("text()='$safeText'")
+            }
+
+            // 4. data-* 属性（当没有 id/class/文本时，作为备用标识）
+            if (preds.isEmpty()) {
+                val attrs = cur!!.getAttributes()
+                var dataKey: String? = null
+                var dataVal: String? = null
+                for (i in 0 until attrs.length) {
+                    val attr = attrs.item(i)
+                    val name = attr.nodeName ?: ""
+                    val value = attr.nodeValue ?: ""
+                    if (name.startsWith("data-") && value.isNotBlank()) {
+                        dataKey = name
+                        dataVal = value
+                        break
+                    }
+                }
+                if (dataKey != null && dataVal != null) {
+                    preds.add("@$dataKey='$dataVal'")
+                }
+            }
+
+            // 5. 同标签兄弟 → 精确索引 [n]
             val parent = cur!!.parentElement()
             if (parent != null) {
                 val same = getChildElements(parent).filter { it.tagNameLower() == tag }
                 if (same.size > 1) {
-                    preds.add("position()")
+                    val idx = same.indexOfFirst { it == cur } + 1  // 1-based
+                    preds.add("$idx")
                 }
             }
 
