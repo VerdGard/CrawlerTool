@@ -1,46 +1,48 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- 主色调（现代明亮蓝） -->
+    <!-- 主色调(简约蓝) -->
     <color name="md_primary">#FF2A7DE1</color>
     <color name="md_on_primary">#FFFFFFFF</color>
     <color name="md_primary_container">#FFD6E8FF</color>
     <color name="md_on_primary_container">#FF001F3F</color>
 
-    <!-- 次要色（柔和蓝灰） -->
+    <!-- 次要色 -->
     <color name="md_secondary">#FF5F6B7A</color>
     <color name="md_on_secondary">#FFFFFFFF</color>
     <color name="md_secondary_container">#FFE2E9F4</color>
     <color name="md_on_secondary_container">#FF1B2029</color>
 
+    <!-- 第三色 -->
+    <color name="md_tertiary">#FF7B4E9E</color>
+    <color name="md_on_tertiary">#FFFFFFFF</color>
+    <color name="md_tertiary_container">#FFF0DBFF</color>
+    <color name="md_on_tertiary_container">#FF2C0052</color>
+
     <!-- 表面/背景 -->
-    <color name="md_surface">#FFFFFBFE</color>
+    <color name="md_surface">#FFF0F2F5</color>
     <color name="md_on_surface">#FF1C1B1F</color>
     <color name="md_surface_variant">#FFE7E0EC</color>
     <color name="md_on_surface_variant">#FF49454F</color>
-    <color name="md_background">#FFF0F4FF</color>
+    <color name="md_background">#FFF0F2F5</color>
     <color name="md_on_background">#FF1C1B1F</color>
-    <color name="md_outline">#FF79747E</color>
+    <color name="md_outline">#FFC5C5C5</color>
     <color name="md_error">#FFD32F2F</color>
 
-    <!-- 卡片通用 -->
-    <color name="card_background">#FFFFFFFF</color>
-    <color name="card_elevation_shadow">#1A000000</color>
-    <color name="divider_color">#FFE0E0E8</color>
-    <color name="input_background">#FFF5F7FA</color>
+    <!-- 卡片 -->
+    <color name="card_bg">#FFF0F2F5</color>
+    <color name="card_shadow">#1A000000</color>
+    <color name="card_stroke">#FFE8E8E8</color>
 
-    <!-- 结果卡片色调 -->
-    <color name="result_item_bg">#FFF5F8FF</color>
-    <color name="result_item_border">#FFD6DCE6</color>
+    <!-- 输入框 -->
+    <color name="input_bg">#FFF0F2F5</color>
+    <color name="input_stroke">#FFD8D8D8</color>
 
-    <!-- Chip 标签（加深文字提高对比度） -->
-    <color name="chip_background">#FFE3EFFF</color>
-    <color name="chip_text_color">#FF1A5BBF</color>
+    <!-- Chip -->
+    <color name="chip_bg">#FFE8EDF5</color>
+    <color name="chip_text">#FF2A7DE1</color>
+    <color name="chip_stroke">#FFD0D8E5</color>
 
-    <!-- 展开按钮 -->
-    <color name="expand_btn_text">#FF1A5BBF</color>
-    <color name="expand_btn_bg">#FFE8F2FF</color>
-
-    <!-- HTML 代码高亮（加深文字色） -->
+    <!-- HTML 高亮 -->
     <color name="html_tag_color">#FF2A7DE1</color>
     <color name="html_attr_color">#FFBF2828</color>
     <color name="html_value_color">#FF256B28</color>
@@ -51,4 +53,11 @@
     <!-- 序号标签 -->
     <color name="index_badge_bg">#FF2A7DE1</color>
     <color name="index_badge_text">#FFFFFFFF</color>
+
+    <!-- 分隔线 -->
+    <color name="divider_color">#FFE8E8E8</color>
+    <!-- 展开按钮背景 -->
+    <color name="expand_btn_bg">#4D2A7DE1</color>
+    <!-- 状态栏 -->
+    <color name="status_bar_color">#FFF0F2F5</color>
 </resources>

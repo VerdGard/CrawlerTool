@@ -1,36 +1,40 @@
 package com.SoloSu.Crawler_tool
 
 import org.jsoup.Jsoup
+import org.jsoup.nodes.Comment
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
+import org.jsoup.nodes.Node
 import org.jsoup.nodes.TextNode
 import org.jsoup.select.Elements
 
 /**
  * 基于 Jsoup DOM 树的 XPath 求值引擎。
  *
- * 支持：
- * - 绝对路径 `/html/body/div`, 相对路径 `//div`
- * - 属性访问 `//a/@href`, `//div/text()`
- * - 谓词 `[@class='foo']`, `[@attr]`, `[n]`,
- *   `[contains(@class,'foo')]`, `[starts-with(@attr,'val')]`,
- *   `[last()]`, `[position()<n]`, `[normalize-space()]`,
- *   `[position()]`, `[text()]`, `[not(@attr)]`, `[not(@attr='val')]`
- * - 复合谓词 `[@class='a' and @id='b']`, `[@class='a' or @class='b']`,
- *   `[@class='row' and position()=2]`, `[@class='row'][2]`
- * - 显式轴 `child::div`, `descendant::a`
- * - 通配符 `*`, 父节点 `..`, 当前节点 `.`
+ * 支持的 XPath 语法：
+ * - 绝对路径 /html/body/div（从文档根开始）
+ * - 相对路径 //div（descendant-or-self::，包含当前节点自身）
+ * - 属性访问 //a/@href, //div/text(), //div/normalize-space()
+ * - 轴 child::, descendant::, descendant-or-self::, parent::,
+ *       ancestor::, following-sibling::, preceding-sibling::
+ * - 谓词 [@class='foo'], [@attr], [n], [last()], [position()<n],
+ *       [contains(@class,'foo')], [starts-with(@attr,'val')],
+ *       [normalize-space()], [normalize-space()='val'],
+ *       [normalize-space(@attr)], [normalize-space(@attr)='val'],
+ *       [text()], [not(@attr)], [not(@attr='val')],
+ *       [last()>1], [position()=last()]
+ * - 复合谓词 [@class='a' and @id='b'], [@class='a' or @class='b']
+ * - 通配符 *, node(), 父节点 .., 当前节点 .
+ * - 显式命名空间跳过（prefix:local → local）
  * - 单引号/双引号均可
  */
 object JsoupXPathEngine {
     // ─── 表达式缓存 ────────────────────────────────────────────
-    // 对相同 XPath 表达式缓存解析后的步骤，避免重复解析
     private val stepCache = object : LinkedHashMap<String, List<XPathStep>>(32, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<XPathStep>>): Boolean {
             return size > 16
         }
     }
-
 
     // ─── 公开入口 ──────────────────────────────────────────────
 
@@ -47,51 +51,60 @@ object JsoupXPathEngine {
 
     /** 在任意 Element 上执行 XPath */
     fun evaluateOn(context: Element, expression: String): List<String> {
-        @Synchronized
-        fun getSteps(expr: String): List<XPathStep> =
-            stepCache.getOrPut(expr) { parseSteps(expr) }
-        val steps = getSteps(expression)
-        if (steps.isEmpty() && expression.isNotBlank()) {
-            throw RuntimeException("无法解析XPath表达式: $expression")
-        }
-        if (steps.isEmpty()) {
-            return emptyList()
+        val expr = expression.trim()
+        if (expr.isEmpty()) return emptyList()
+
+        // 绝对路径：从文档根开始
+        val effectiveContext = if (expr.startsWith("/")) {
+            val doc = when (context) {
+                is Document -> context
+                else -> context.ownerDocument()
+            }
+            doc?.children()?.firstOrNull() ?: context
+        } else {
+            context
         }
 
-        var nodes = listOf(context)
+        @Synchronized
+        fun getSteps(e: String): List<XPathStep> =
+            stepCache.getOrPut(e) { parseSteps(e) }
+        val steps = getSteps(expr)
+        if (steps.isEmpty()) {
+            throw RuntimeException("无法解析XPath表达式: $expr")
+        }
+
+        var nodes = listOf(effectiveContext)
 
         for (step in steps) {
             when {
-                // 属性访问（最终步骤）
                 step.isAttribute -> {
                     val attrName = step.nodeTest.removePrefix("@")
-                    return if (attrName == "*") {
+                    val result = if (attrName == "*") {
                         nodes.flatMap { el ->
                             el.attributes().asList().map { "${it.key}=${it.value}" }
                         }
                     } else {
                         nodes.map { el -> el.attr(attrName) }
                     }
+                    // 如果 @ 不是最后一步，抛出错误（属性节点不能再有子轴）
+                    if (steps.last() !== step) {
+                        throw RuntimeException("属性访问 @$attrName 必须是 XPath 最后一步")
+                    }
+                    return result
                 }
-                // text() 中间/最终步骤
                 step.isText -> {
                     return nodes.flatMap { el ->
-                        if (step.nodeTest == "text()") {
-                            el.textNodes().map { it.text().trim() }.filter { it.isNotEmpty() }
-                        } else {
-                            // normalize-space()
-                            listOf(el.textNodes().joinToString(" ") { it.text().trim() }
-                                .replace(Regex("\\s+"), " ").trim())
+                        when (step.nodeTest) {
+                            "text()" -> el.textNodes().map { it.text().trim() }.filter { it.isNotEmpty() }
+                            "normalize-space()" -> listOf(el.text().replace(Regex("\\s+"), " ").trim())
+                            else -> emptyList()
                         }
                     }
                 }
-                // ..
                 step.isParent -> {
                     nodes = nodes.mapNotNull { it.parent() }
                 }
-                // .
-                step.isSelf -> { /* 保持 nodes 不变 */ }
-                // 正常步骤
+                step.isSelf -> { /* 保持不变 */ }
                 else -> {
                     nodes = evaluateStep(nodes, step)
                 }
@@ -109,15 +122,22 @@ object JsoupXPathEngine {
         val predicates: List<PredicateExpr> = emptyList()
     ) {
         val isAttribute: Boolean get() = nodeTest.startsWith("@")
-        val isText: Boolean
-            get() = nodeTest == "text()" || nodeTest == "normalize-space()"
+        val isText: Boolean get() = nodeTest == "text()" || nodeTest == "normalize-space()"
         val isParent: Boolean get() = nodeTest == ".."
         val isSelf: Boolean get() = nodeTest == "."
-        val isWildcard: Boolean get() = nodeTest == "*"
-        val tagName: String get() = nodeTest
+        val isWildcard: Boolean get() = nodeTest == "*" || nodeTest == "node()"
+        val tagName: String get() = if (nodeTest == "node()") "*" else nodeTest
     }
 
-    private enum class Axis { CHILD, DESCENDANT }
+    private enum class Axis {
+        CHILD,
+        DESCENDANT,
+        DESCENDANT_OR_SELF,
+        PARENT,
+        ANCESTOR,
+        FOLLOWING_SIBLING,
+        PRECEDING_SIBLING
+    }
 
     // ─── 谓词表达式 ────────────────────────────────────────────
 
@@ -129,12 +149,34 @@ object JsoupXPathEngine {
         override fun matches(el: Element, i: Int, siblings: List<Element>) = i == index
     }
 
-    /** 恒为 true 的谓词：用于 [position()] 裸调用语法糖 */
     private class PositionAnyPredicate : PredicateExpr() {
         override fun matches(el: Element, i: Int, siblings: List<Element>) = true
     }
 
+    /** [last()] — 最后一个匹配节点 */
     private class LastPredicate : PredicateExpr() {
+        override fun matches(el: Element, i: Int, siblings: List<Element>) =
+            i == siblings.size - 1
+    }
+
+    /** [last() op n] — 与上下文大小比较 */
+    private class LastComparisonPredicate(val op: String, val value: Int) : PredicateExpr() {
+        override fun matches(el: Element, i: Int, siblings: List<Element>): Boolean {
+            val size = siblings.size
+            return when (op) {
+                "="  -> size == value
+                "!=" -> size != value
+                "<"  -> size < value
+                ">"  -> size > value
+                "<=" -> size <= value
+                ">=" -> size >= value
+                else -> false
+            }
+        }
+    }
+
+    /** [position()=last()] — 当 position=last 时匹配（等价 [last()]） */
+    private class PositionEqualsLastPredicate : PredicateExpr() {
         override fun matches(el: Element, i: Int, siblings: List<Element>) =
             i == siblings.size - 1
     }
@@ -179,19 +221,38 @@ object JsoupXPathEngine {
             el.attr(attr).startsWith(value)
     }
 
+    /** [normalize-space(@attr)] — 归一化后非空 */
+    private data class AttrNormalizeSpaceExistsPredicate(val attr: String) : PredicateExpr() {
+        override fun matches(el: Element, i: Int, siblings: List<Element>) =
+            el.attr(attr).replace(Regex("\\s+"), " ").trim().isNotEmpty()
+    }
+
+    /** [normalize-space(@attr)='val'] */
+    private data class AttrNormalizeSpaceEqualsPredicate(val attr: String, val value: String) : PredicateExpr() {
+        override fun matches(el: Element, i: Int, siblings: List<Element>) =
+            el.attr(attr).replace(Regex("\\s+"), " ").trim() == value
+    }
+
+    /** [normalize-space()='val'] */
+    private data class TextNormalizeSpaceEqualsPredicate(val value: String) : PredicateExpr() {
+        override fun matches(el: Element, i: Int, siblings: List<Element>) =
+            el.text().replace(Regex("\\s+"), " ").trim() == value
+    }
+
     private data class TextEqualsPredicate(val value: String) : PredicateExpr() {
         override fun matches(el: Element, i: Int, siblings: List<Element>) =
-            el.ownText().trim() == value
+            el.text().trim() == value
     }
 
     private data class TextContainsPredicate(val value: String) : PredicateExpr() {
         override fun matches(el: Element, i: Int, siblings: List<Element>) =
-            el.ownText().contains(value)
+            el.text().contains(value)
     }
 
+    /** [normalize-space()] / [text()] — 全文本非空 */
     private class TextNormalizeSpacePredicate : PredicateExpr() {
         override fun matches(el: Element, i: Int, siblings: List<Element>) =
-            el.ownText().trim().isNotEmpty()
+            el.text().trim().isNotEmpty()
     }
 
     private class AndPredicate(
@@ -208,7 +269,6 @@ object JsoupXPathEngine {
             left.matches(el, i, siblings) || right.matches(el, i, siblings)
     }
 
-    /** not() 反转谓词 */
     private class NotPredicate(val inner: PredicateExpr) : PredicateExpr() {
         override fun matches(el: Element, i: Int, siblings: List<Element>) =
             !inner.matches(el, i, siblings)
@@ -218,53 +278,82 @@ object JsoupXPathEngine {
 
     /**
      * 将 XPath 表达式解析为步骤列表。
-     * 示例：
-     *   "//a/@href"        → [DESCENDANT:"a"] + attribute "@href"
-     *   "/html/body/div"   → [CHILD:"html", CHILD:"body", CHILD:"div"]
-     *   "//div[@class='a']/span" → [DESCENDANT:"div", CHILD:"span"]
+     *
+     * - // 生成 DESCENDANT_OR_SELF，包含当前节点自身
+     * - /html/body 绝对路径由外层处理（从文档根开始）
      */
-    private fun parseSteps(expression: String): List<XPathStep> {
-        val expr = expression.trim()
-        if (expr.isEmpty()) return emptyList()
+    // ===== 修改开始：替换整个 parseSteps 函数 =====
+private fun parseSteps(expression: String): List<XPathStep> {
+    val expr = expression.trim()
+    if (expr.isEmpty()) return emptyList()
 
-        val steps = mutableListOf<XPathStep>()
-        var pos = 0
+    val steps = mutableListOf<XPathStep>()
+    var pos = 0
 
-        while (pos < expr.length) {
-            // 处理开头的 /
-            var axis = Axis.CHILD
-            if (expr[pos] == '/') {
+    // 处理开头的 / 或 //
+    if (expr[pos] == '/') {
+        pos++
+        if (pos < expr.length && expr[pos] == '/') {
+            // 开头的 // → descendant-or-self::node()
+            steps.add(XPathStep(Axis.DESCENDANT_OR_SELF, "node()"))
+            pos++
+        }
+    }
+
+    while (pos < expr.length) {
+        // 处理步骤间的 /
+        if (expr[pos] == '/') {
+            pos++
+            if (pos < expr.length && expr[pos] == '/') {
+                // 中间的 // → descendant-or-self::node()
+                steps.add(XPathStep(Axis.DESCENDANT_OR_SELF, "node()"))
                 pos++
-                if (pos < expr.length && expr[pos] == '/') {
-                    axis = Axis.DESCENDANT
-                    pos++
-                }
+                continue
             }
-
+            // 单个 / 意味着 CHILD 轴，无需插入额外步骤
             if (pos >= expr.length) break
-
-            // 支持 child:: 和 descendant:: 显式轴前缀
-            val remaining = expr.substring(pos)
-            val explicitAxisMatch = Regex("^(child|descendant)\\s*::").find(remaining)
-            if (explicitAxisMatch != null) {
-                val axisName = explicitAxisMatch.groupValues[1]
-                axis = if (axisName == "descendant") Axis.DESCENDANT else Axis.CHILD
-                pos += explicitAxisMatch.value.length
-            }
-
-            // 提取 nodeTest + 谓词
-            val parsed = parseNodeTestAndPredicates(expr.substring(pos))
-            steps.add(
-                XPathStep(
-                    axis = axis,
-                    nodeTest = parsed.nodeTest,
-                    predicates = parsed.predicates
-                )
-            )
-            pos += parsed.consumedLength
         }
 
-        return steps
+        // 检查显式轴前缀
+        val remaining = expr.substring(pos)
+        val axisMatch = Regex(
+            "^(child|descendant|descendant-or-self|parent|ancestor|following-sibling|preceding-sibling)\\s*::"
+        ).find(remaining)
+
+        val axis = if (axisMatch != null) {
+            pos += axisMatch.value.length
+            parseAxisName(axisMatch.groupValues[1])
+        } else {
+            Axis.CHILD
+        }
+
+        // 解析 nodeTest + predicates
+        val parsed = parseNodeTestAndPredicates(expr.substring(pos))
+        steps.add(
+            XPathStep(
+                axis = axis,
+                nodeTest = parsed.nodeTest,
+                predicates = parsed.predicates
+            )
+        )
+        pos += parsed.consumedLength
+    }
+
+    return steps
+}
+// ===== 修改结束 =====
+
+    private fun parseAxisName(name: String): Axis {
+        return when (name) {
+            "child" -> Axis.CHILD
+            "descendant" -> Axis.DESCENDANT
+            "descendant-or-self" -> Axis.DESCENDANT_OR_SELF
+            "parent" -> Axis.PARENT
+            "ancestor" -> Axis.ANCESTOR
+            "following-sibling" -> Axis.FOLLOWING_SIBLING
+            "preceding-sibling" -> Axis.PRECEDING_SIBLING
+            else -> Axis.CHILD
+        }
     }
 
     private data class StepParseResult(
@@ -277,25 +366,22 @@ object JsoupXPathEngine {
         var pos = 0
         val len = input.length
 
-        // 提取 nodeTest
         val nodeTest: String = when {
             // @attr
             input[pos] == '@' -> {
                 val start = pos
                 pos++
-                while (pos < len && input[pos] !in charArrayOf('[', '/')) pos++
+                while (pos < len && input[pos] !in charArrayOf('[', '/', ':')) pos++
                 input.substring(start, pos)
             }
-            // text() | normalize-space() | node()
+            // text() | normalize-space()
             input.substring(pos).startsWith("text()") -> {
                 pos += 6; "text()"
             }
             input.substring(pos).startsWith("normalize-space()") -> {
                 pos += 17; "normalize-space()"
             }
-            input.substring(pos).startsWith("comment()") -> {
-                pos += 9; "comment()"
-            }
+            // node() — 通配符匹配任意元素
             input.substring(pos).startsWith("node()") -> {
                 pos += 6; "node()"
             }
@@ -316,7 +402,7 @@ object JsoupXPathEngine {
                 val start = pos
                 while (pos < len && input[pos] !in charArrayOf('[', '/', ':')) pos++
                 var tag = input.substring(start, pos)
-                // 跳过 namespace 前缀
+                // 跳过 namespace 前缀（prefix:local → local）
                 if (pos < len && input[pos] == ':') {
                     pos++
                     val tagStart = pos
@@ -326,14 +412,12 @@ object JsoupXPathEngine {
                 tag
             }
             else -> {
-                // 无法解析，全部返回
                 val rest = input.substring(pos)
                 pos = len
                 rest
             }
         }
 
-        // 解析谓词 [...]
         val predicates = mutableListOf<PredicateExpr>()
         while (pos < len && input[pos] == '[') {
             val bracketResult = parseBracketPredicate(input, pos)
@@ -373,7 +457,7 @@ object JsoupXPathEngine {
         return input.substring(startPos + 1)
     }
 
-    /** 将引号内文本替换为占位符，保护引号内的内容不被分割 */
+    /** 将引号内文本替换为占位符 */
     private fun extractQuotedSegments(input: String): Pair<String, List<String>> {
         val placeholders = mutableListOf<String>()
         val sb = StringBuilder()
@@ -403,16 +487,35 @@ object JsoupXPathEngine {
         return sb.toString() to placeholders
     }
 
-    /** 解析谓词内部，支持 and/or */
+    /**
+     * 解析谓词内部（含 and/or），返回谓词列表。
+     */
     private fun parsePredicateInner(inner: String): List<PredicateExpr> {
         val trimmed = inner.trim()
+
+        // not(...) 包裹复合 → 内部走 parsePredicateExpr 含 and/or
+        val notMatch = Regex("not\\s*\\((.+)\\)\\s*$", RegexOption.DOT_MATCHES_ALL).find(trimmed)
+        if (notMatch != null) {
+            val body = notMatch.groupValues[1].trim()
+            val innerPred = parsePredicateExpr(body)
+            if (innerPred != null) return listOf(NotPredicate(innerPred))
+        }
+
+        val single = parsePredicateExpr(trimmed)
+        return if (single != null) listOf(single) else emptyList()
+    }
+
+    /**
+     * 解析完整谓词条件（含 and/or 复合），返回单个 PredicateExpr。
+     */
+    private fun parsePredicateExpr(input: String): PredicateExpr? {
+        val trimmed = input.trim()
         val (masked, quoted) = extractQuotedSegments(trimmed)
 
-        // 恢复引号后解析单个条件
         fun restore(s: String): String {
             var result = s
             for (i in quoted.indices) {
-                result = result.replace("\${Q${i + 1}}", "'${quoted[i]}'")
+                result = result.replaceFirst("\${Q${i + 1}}", "'${quoted[i]}'")
             }
             return result
         }
@@ -426,7 +529,7 @@ object JsoupXPathEngine {
                     result = if (result == null) single else AndPredicate(result, single)
                 }
             }
-            return if (result != null) listOf(result) else emptyList()
+            return result
         }
 
         val orParts = splitByLogicalOp(masked, "or")
@@ -438,14 +541,16 @@ object JsoupXPathEngine {
                     result = if (result == null) single else OrPredicate(result, single)
                 }
             }
-            return if (result != null) listOf(result) else emptyList()
+            return result
         }
 
-        val single = parseSinglePredicate(trimmed)
-        return if (single != null) listOf(single) else emptyList()
+        return parseSinglePredicate(trimmed)
     }
 
-    /** 按逻辑运算符分割，跳过引号内内容 */
+    /**
+     * 按逻辑运算符分割。不要求操作符两侧有空格，
+     * 只确保前后不是字母/数字/下划线（避免匹配单词内嵌）。
+     */
     private fun splitByLogicalOp(input: String, op: String): List<String> {
         val parts = mutableListOf<String>()
         val current = StringBuilder()
@@ -462,7 +567,9 @@ object JsoupXPathEngine {
                 val before = if (i > 0) input[i - 1] else ' '
                 val afterIdx = i + op.length
                 val after = if (afterIdx < input.length) input[afterIdx] else ' '
-                if (before == ' ' && after == ' ') {
+                // 前后都不是单词字符 → 安全的 and/or 分割
+                if (!before.isLetterOrDigit() && before != '_' &&
+                    !after.isLetterOrDigit() && after != '_') {
                     parts.add(current.toString())
                     current.clear()
                     i += op.length
@@ -476,36 +583,64 @@ object JsoupXPathEngine {
         return parts.filter { it.isNotBlank() }
     }
 
-    /** 提取引号内的值，兼容 ' 和 " */
-    private fun extractQuotedValue(input: String, startIdx: Int): Pair<String, Int>? {
-        if (startIdx >= input.length) return null
-        val quote = input[startIdx]
-        if (quote != '\'' && quote != '"') return null
-        val end = input.indexOf(quote, startIdx + 1)
-        if (end == -1) return null
-        return input.substring(startIdx + 1, end) to (end + 1)
-    }
-
-    /** 解析单个谓词条件（含 not() 反转包装） */
+    /** 解析单个原子谓词条件 */
     private fun parseSinglePredicate(expr: String): PredicateExpr? {
         var e = expr.trim()
         if (e.isEmpty()) return null
 
-        // not(...) 反转内部谓词
-        val notMatch = Regex("not\\s*\\((.+)\\)\\s*$").find(e)
+        // ── last() 比较运算 ──
+        // [last() op n]
+        val lastCmpMatch = Regex("last\\s*\\(\\s*\\)\\s*([=!<>]=?)\\s*(\\d+)").find(e)
+        if (lastCmpMatch != null) {
+            return LastComparisonPredicate(lastCmpMatch.groupValues[1], lastCmpMatch.groupValues[2].toInt())
+        }
+
+        // [position()=last()]
+        if (Regex("position\\s*\\(\\s*\\)\\s*=\\s*last\\s*\\(\\s*\\)").matches(e)) {
+            return PositionEqualsLastPredicate()
+        }
+
+        // [position()=last() op n]? — No, position()=last() comparison
+
+        // ── normalize-space 带参数 ──
+        // [normalize-space(@attr)='val']
+        val nsAttrEqMatch = Regex(
+            "normalize-space\\s*\\(\\s*@([\\w-]+)\\s*\\)\\s*=\\s*['\"]([^'\"]*)['\"]"
+        ).find(e)
+        if (nsAttrEqMatch != null) {
+            return AttrNormalizeSpaceEqualsPredicate(nsAttrEqMatch.groupValues[1], nsAttrEqMatch.groupValues[2])
+        }
+
+        // [normalize-space(@attr)]
+        val nsAttrExistsMatch = Regex("normalize-space\\s*\\(\\s*@([\\w-]+)\\s*\\)").find(e)
+        if (nsAttrExistsMatch != null) {
+            return AttrNormalizeSpaceExistsPredicate(nsAttrExistsMatch.groupValues[1])
+        }
+
+        // [normalize-space()='val']
+        val nsEqMatch = Regex(
+            "normalize-space\\s*\\(\\s*\\)\\s*=\\s*['\"]([^'\"]*)['\"]"
+        ).find(e)
+        if (nsEqMatch != null) {
+            return TextNormalizeSpaceEqualsPredicate(nsEqMatch.groupValues[1])
+        }
+
+        // ── not() 包单条件 ──
+        val notMatch = Regex("not\\s*\\((.+)\\)\\s*$", RegexOption.DOT_MATCHES_ALL).find(e)
         if (notMatch != null) {
             val inner = notMatch.groupValues[1].trim()
+            if (hasLogicalOp(inner)) return null
             val innerPred = parseSinglePredicate(inner)
             if (innerPred != null) return NotPredicate(innerPred)
         }
 
-        // [n] — 纯数字索引
+        // [n]
         e.toIntOrNull()?.let { n -> return IndexPredicate(n - 1) }
 
         // [last()]
         if (e == "last()" || e.matches(Regex("last\\(\\)\\s*"))) return LastPredicate()
 
-        // [position()] 裸调用 — 匹配所有节点（语法糖）
+        // [position()]
         if (e == "position()" || e.matches(Regex("position\\s*\\(\\s*\\)\\s*"))) {
             return PositionAnyPredicate()
         }
@@ -516,25 +651,24 @@ object JsoupXPathEngine {
             return PositionPredicate(posMatch.groupValues[1], posMatch.groupValues[2].toInt())
         }
 
-        // [normalize-space()] 或 [normalize-space(.)]
+        // [normalize-space()]
         if (e.matches(Regex("normalize-space\\(\\.?\\)\\s*"))) {
             return TextNormalizeSpacePredicate()
         }
 
-        // 处理带引号的匹配
         // [@attr='val'] / [@attr="val"]
         val attrEqMatch = Regex("@([\\w-]+)\\s*=\\s*['\"]([^'\"]*)['\"]").find(e)
         if (attrEqMatch != null) {
             return AttrEqualsPredicate(attrEqMatch.groupValues[1], attrEqMatch.groupValues[2])
         }
 
-        // [@attr!='val'] / [@attr!="val"]
+        // [@attr!='val']
         val attrNeqMatch = Regex("@([\\w-]+)\\s*!=\\s*['\"]([^'\"]*)['\"]").find(e)
         if (attrNeqMatch != null) {
             return AttrNotEqualsPredicate(attrNeqMatch.groupValues[1], attrNeqMatch.groupValues[2])
         }
 
-        // [@attr] — 属性存在
+        // [@attr]
         val attrExistsMatch = Regex("@([\\w-]+)").find(e)
         if (attrExistsMatch != null) {
             return AttrExistsPredicate(attrExistsMatch.groupValues[1])
@@ -546,7 +680,7 @@ object JsoupXPathEngine {
             return TextEqualsPredicate(textEqMatch.groupValues[1])
         }
 
-        // [text()] — 有非空文本内容的节点（语法糖）
+        // [text()]
         if (e == "text()" || e.matches(Regex("text\\(\\)\\s*"))) {
             return TextNormalizeSpacePredicate()
         }
@@ -575,10 +709,22 @@ object JsoupXPathEngine {
         return null
     }
 
+    private fun hasLogicalOp(input: String): Boolean {
+        val (masked, _) = extractQuotedSegments(input)
+        return splitByLogicalOp(masked, "and").size > 1 ||
+               splitByLogicalOp(masked, "or").size > 1
+    }
+
     // ─── 步骤求值 ──────────────────────────────────────────────
 
+    /**
+     * 对当前节点列表执行一步 XPath 求值。
+     *
+     * 匹配元素按父节点分组，谓词中的 last() / [n] 以同父同类节点为上下文，
+     * 符合标准 XPath 语义。
+     */
     private fun evaluateStep(nodes: List<Element>, step: XPathStep): List<Element> {
-        val candidates = mutableListOf<Pair<Element, List<Element>>>()
+        val byParent = mutableMapOf<Element?, MutableList<Element>>()
 
         for (node in nodes) {
             when (step.axis) {
@@ -586,33 +732,105 @@ object JsoupXPathEngine {
                     val children = node.children()
                     val filtered = if (step.isWildcard) children
                     else children.filter { it.tagName().equals(step.tagName, ignoreCase = true) }
-                    candidates.addAll(filtered.map { it to children })
+                    if (filtered.isNotEmpty()) {
+                        val list = byParent.getOrPut(node) { mutableListOf() }
+                        list.addAll(filtered)
+                    }
                 }
+
                 Axis.DESCENDANT -> {
                     val all = if (step.isWildcard) {
                         node.allElements.filter { it !== node }
                     } else {
-                        // 用 Jsoup select 按标签名过滤，避免遍历全部后代
-                        val tag = step.tagName.lowercase()
-                        node.select(tag)
+                        node.select(step.tagName.lowercase())
                     }
                     for (el in all) {
                         val parent = el.parent()
-                        val siblings = parent?.children() ?: listOf(el)
-                        candidates.add(el to siblings)
+                        byParent.getOrPut(parent) { mutableListOf() }.add(el)
+                    }
+                }
+
+                Axis.DESCENDANT_OR_SELF -> {
+                    // 1. 检查当前节点自身
+                    if (step.isWildcard || node.tagName().equals(step.tagName, ignoreCase = true)) {
+                        val doc = node.ownerDocument() ?: node
+                        byParent.getOrPut(doc) { mutableListOf() }.add(node)
+                    }
+                    // 2. 后代节点
+                    val descendants = if (step.isWildcard) {
+                        node.allElements.filter { it !== node }
+                    } else {
+                        node.select(step.tagName.lowercase())
+                    }
+                    for (el in descendants) {
+                        val parent = el.parent()
+                        byParent.getOrPut(parent) { mutableListOf() }.add(el)
+                    }
+                }
+
+                Axis.PARENT -> {
+                    val p = node.parent()
+                    if (p != null) {
+                        if (step.isWildcard || p.tagName().equals(step.tagName, ignoreCase = true)) {
+                            byParent.getOrPut(p.parent() ?: p) { mutableListOf() }.add(p)
+                        }
+                    }
+                }
+
+                Axis.ANCESTOR -> {
+                    var cur: Element? = node.parent()
+                    while (cur != null) {
+                        if (step.isWildcard || cur.tagName().equals(step.tagName, ignoreCase = true)) {
+                            val parent = cur.parent()
+                            byParent.getOrPut(parent ?: cur) { mutableListOf() }.add(cur)
+                        }
+                        cur = cur.parent()
+                    }
+                }
+
+                Axis.FOLLOWING_SIBLING -> {
+                    val parent = node.parent()
+                    if (parent != null) {
+                        val siblings = parent.children()
+                        val start = siblings.indexOf(node) + 1
+                        for (i in start until siblings.size) {
+                            val el = siblings[i]
+                            if (step.isWildcard || el.tagName().equals(step.tagName, ignoreCase = true)) {
+                                byParent.getOrPut(parent) { mutableListOf() }.add(el)
+                            }
+                        }
+                    }
+                }
+
+                Axis.PRECEDING_SIBLING -> {
+                    val parent = node.parent()
+                    if (parent != null) {
+                        val siblings = parent.children()
+                        val end = siblings.indexOf(node)
+                        for (i in 0 until end) {
+                            val el = siblings[i]
+                            if (step.isWildcard || el.tagName().equals(step.tagName, ignoreCase = true)) {
+                                byParent.getOrPut(parent) { mutableListOf() }.add(el)
+                            }
+                        }
                     }
                 }
             }
         }
 
         if (step.predicates.isEmpty()) {
-            return candidates.map { it.first }.distinct()
+            return byParent.values.flatten().distinct()
         }
 
-        return candidates.filter { (el, siblings) ->
-            val idx = siblings.indexOf(el)
-            step.predicates.all { it.matches(el, idx, siblings) }
-        }.map { it.first }.distinct()
+        val result = mutableListOf<Element>()
+        for ((_, siblings) in byParent) {
+            for ((idx, el) in siblings.withIndex()) {
+                if (step.predicates.all { it.matches(el, idx, siblings) }) {
+                    result.add(el)
+                }
+            }
+        }
+        return result.distinct()
     }
 
     // ─── 序列化辅助 ────────────────────────────────────────────

@@ -5,6 +5,7 @@ import android.annotation.SuppressLint
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.graphics.Color
 import android.graphics.Typeface
 import android.text.Editable
 import android.text.TextWatcher
@@ -22,27 +23,25 @@ import android.widget.Toast
 import androidx.core.content.ContextCompat
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import org.w3c.dom.Document
-import org.w3c.dom.Element
-import org.w3c.dom.Node
-import org.w3c.dom.NodeList
-import java.io.StringReader
-import javax.xml.parsers.DocumentBuilderFactory
-import org.xml.sax.InputSource
+import com.google.android.material.slider.Slider
+import org.jsoup.Jsoup
+import org.jsoup.nodes.Document
+import org.jsoup.nodes.Element
+import android.graphics.drawable.GradientDrawable
 
 /**
- * HTML 树形结构对话框（基于标准 DOM API）。
+ * HTML 树形结构对话框 — 增强交互版
  *
- * 功能：
- * - 缩进表示层级
- * - 点击展开/折叠，带布局动画
- * - 双指缩放（缩放整体视图，非仅文字）
- * - 实时搜索过滤
- * - 点击展开/折叠，长按复制 XPath
+ * 交互特性：
+ * - 整行点击展开/折叠（不限于三角符号）
+ * - 层级缩进指示线
+ * - 底部工具栏：展开全部、折叠全部、展开到指定层
+ * - 节点右侧显示子节点数量
+ * - 双击复制 XPath
+ * - 标签颜色区分（div=蓝, a=绿, img=橙, 其他=灰）
+ * - 有属性标记的节点显示小圆点
  */
 object HtmlTreeDialog {
-
-    // ─── 数据模型 ──────────────────────────────────────────────────────────
 
     private data class TreeNode(
         val id: Int,
@@ -51,10 +50,10 @@ object HtmlTreeDialog {
         val children: List<TreeNode>,
         val displayText: String,
         val textContent: String,
-        val hasChildren: Boolean
+        val hasChildren: Boolean,
+        val tagName: String,
+        val hasImportantAttr: Boolean  // 是否有 id/class/data-*
     )
-
-    // ─── 入口 ──────────────────────────────────────────────────────────────
 
     @SuppressLint("ClickableViewAccessibility", "SetTextI18n")
     fun show(
@@ -63,19 +62,15 @@ object HtmlTreeDialog {
         onSelectXPath: (xpath: String) -> Unit = {}
     ) {
         try {
-            val doc = parseHtmlToDom(htmlContent) ?: run {
-                Toast.makeText(context, "未能解析 HTML", Toast.LENGTH_SHORT).show()
-                return
-            }
-
-            val rootNodes = buildTreeFromDom(doc)
+            val doc = Jsoup.parse(htmlContent)
+            val rootNodes = buildTreeFromJsoup(doc)
 
             if (rootNodes.isEmpty()) {
                 Toast.makeText(context, "未能解析出有效结构", Toast.LENGTH_SHORT).show()
                 return
             }
 
-            // ── 2. 交互状态 ──
+            // 交互状态
             val expandedIds = mutableSetOf<Int>()
             val searchQuery = StringBuilder()
             val matchIds = mutableSetOf<Int>()
@@ -83,9 +78,7 @@ object HtmlTreeDialog {
             val minScale = 0.6f
             val maxScale = 2.5f
 
-            // ── 3. 构建 UI 组件 ──
-
-            // 树容器（带布局动画）
+            // UI 组件
             val treeContainer = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 layoutParams = ViewGroup.LayoutParams(
@@ -97,56 +90,207 @@ object HtmlTreeDialog {
                 layoutTransition.enableTransitionType(LayoutTransition.CHANGING)
             }
 
-            // 缩放包装器（实际缩放整个视图）
             val zoomWrapper = createZoomWrapper(context, treeContainer, minScale, maxScale)
 
-            // 滚动容器
             val scrollView = ScrollView(context).apply {
                 addView(zoomWrapper)
                 clipToPadding = false
                 isFillViewport = true
+                setPadding(4, 8, 4, 8)
             }
 
-            // ── 4. 渲染函数 ──
-            // 视图缓存：避免重复创建 View
+            // 缓存
             val viewCache = hashMapOf<Int, View>()
             val childContainerCache = hashMapOf<Int, LinearLayout>()
 
-            /**
-             * 构建节点行视图（缓存复用）。
-             * 点击展开/折叠时只切换子容器可见性，不重建。
-             */
+            // ===== 核心：构建节点行（增强版） =====
             fun buildRow(node: TreeNode): View {
                 return viewCache.getOrPut(node.id) {
-                    var resultView: View? = null
-                    resultView = createRowView(context, node, expandedIds.contains(node.id) || node.id in searchExpandIds, expandedIds, { nowExpanded ->
-                        if (nowExpanded) expandedIds.add(node.id) else expandedIds.remove(node.id)
-                        // 切换子容器可见性
-                        val container = childContainerCache[node.id]
-                        if (container != null) {
-                            container.visibility = if (nowExpanded) View.VISIBLE else View.GONE
+                    val density = context.resources.displayMetrics.density
+                    val indentPx = (node.depth * 24 * density).toInt()
+
+                    val rowLayout = LinearLayout(context).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        gravity = Gravity.CENTER_VERTICAL
+                        setPadding(indentPx, 8, 12, 8)
+                        minimumHeight = (36 * density).toInt()
+                        // 交替背景
+                        setBackgroundColor(
+                            if (node.depth % 2 == 0)
+                                ContextCompat.getColor(context, android.R.color.transparent)
+                            else
+                                Color.parseColor("#0A000000")
+                        )
+                        // 整行点击
+                        isClickable = true
+                        isFocusable = true
+                        foreground = context.theme.obtainStyledAttributes(
+                            intArrayOf(android.R.attr.selectableItemBackground)
+                        ).getDrawable(0)
+                    }
+
+                    // ---- 缩进指示线（视觉引导） ----
+                    if (node.depth > 0) {
+                        val indicator = View(context).apply {
+                            layoutParams = LinearLayout.LayoutParams(
+                                (16 * density).toInt(),
+                                ViewGroup.LayoutParams.MATCH_PARENT
+                            )
+                            setBackgroundColor(Color.parseColor("#30B0B0B0"))
                         }
-                        // 刷新箭头符号
-                        val arrow = resultView?.findViewWithTag("arrow_${node.id}") as? TextView
-                        if (arrow != null && node.hasChildren) {
-                            arrow.text = if (nowExpanded) "▼" else "▶"
+                        rowLayout.addView(indicator)
+                    }
+
+                    // ---- 有属性标记：小圆点 ----
+if (node.hasImportantAttr) {
+    val dot = View(context).apply {
+        layoutParams = LinearLayout.LayoutParams(
+            (8 * density).toInt(),
+            (8 * density).toInt()
+        ).apply {
+            marginEnd = (6 * density).toInt()
+        }
+        // 用 GradientDrawable 设置圆形背景
+        val drawable = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(ContextCompat.getColor(context, R.color.md_primary))
+        }
+        background = drawable
+    }
+    rowLayout.addView(dot)
+}
+
+                    // ---- 三角箭头（点击区域已由整行接管） ----
+                    val arrowView = TextView(context).apply {
+                        text = when {
+                            node.hasChildren -> if (expandedIds.contains(node.id)) "▼" else "▶"
+                            else -> "·"
                         }
-                    }, onSelectXPath)
-                    resultView!!
+                        tag = "arrow_${node.id}"
+                        textSize = 12f
+                        setTextColor(
+                            if (node.hasChildren)
+                                ContextCompat.getColor(context, R.color.md_primary)
+                            else
+                                ContextCompat.getColor(context, R.color.md_outline)
+                        )
+                        layoutParams = LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT
+                        ).apply {
+                            gravity = Gravity.CENTER_VERTICAL
+                            marginEnd = (6 * density).toInt()
+                        }
+                    }
+                    rowLayout.addView(arrowView)
+
+                    // ---- 标签名（颜色区分） ----
+                    val tagNameView = TextView(context).apply {
+                        text = node.tagName
+                        textSize = 13f
+                        typeface = Typeface.DEFAULT_BOLD
+                        setTextColor(getTagColor(context, node.tagName))
+                        layoutParams = LinearLayout.LayoutParams(
+                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                            ViewGroup.LayoutParams.WRAP_CONTENT
+                        ).apply {
+                            marginEnd = (4 * density).toInt()
+                        }
+                    }
+                    rowLayout.addView(tagNameView)
+
+                    // ---- 属性/文本内容（灰色） ----
+                    val detailView = TextView(context).apply {
+                        text = node.displayText
+                        textSize = 11f
+                        typeface = Typeface.MONOSPACE
+                        setTextColor(ContextCompat.getColor(context, R.color.md_on_surface_variant))
+                        maxLines = 1
+                        ellipsize = android.text.TextUtils.TruncateAt.END
+                        layoutParams = LinearLayout.LayoutParams(
+                            0,
+                            ViewGroup.LayoutParams.WRAP_CONTENT,
+                            1f
+                        ).apply {
+                            marginEnd = (8 * density).toInt()
+                        }
+                    }
+                    rowLayout.addView(detailView)
+
+                    // ---- 子节点数量徽标 ----
+                    if (node.hasChildren) {
+                        val countView = TextView(context).apply {
+                            text = "${node.children.size}"
+                            textSize = 10f
+                            setTextColor(Color.WHITE)
+                            gravity = Gravity.CENTER
+                            setPadding(
+                                (6 * density).toInt(),
+                                (2 * density).toInt(),
+                                (6 * density).toInt(),
+                                (2 * density).toInt()
+                            )
+                            background = ContextCompat.getDrawable(context, R.drawable.expand_btn_bg)
+                            layoutParams = LinearLayout.LayoutParams(
+                                ViewGroup.LayoutParams.WRAP_CONTENT,
+                                ViewGroup.LayoutParams.WRAP_CONTENT
+                            )
+                        }
+                        rowLayout.addView(countView)
+                    }
+
+                    // ---- 整行点击展开/折叠 ----
+                    rowLayout.setOnClickListener {
+                        if (node.hasChildren) {
+                            val nowExpanded = !expandedIds.contains(node.id)
+                            if (nowExpanded) expandedIds.add(node.id) else expandedIds.remove(node.id)
+                            // 切换子容器可见性
+                            val container = childContainerCache[node.id]
+                            if (container != null) {
+                                container.visibility = if (nowExpanded) View.VISIBLE else View.GONE
+                            }
+                            // 刷新箭头
+                            arrowView.text = if (nowExpanded) "▼" else "▶"
+                            // 更新计数徽标背景色
+                            if (nowExpanded) {
+                                rowLayout.setBackgroundColor(
+                                    Color.parseColor("#15" + Integer.toHexString(
+                                        ContextCompat.getColor(context, R.color.md_primary)
+                                    ).substring(2))
+                                )
+                            } else {
+                                rowLayout.setBackgroundColor(
+                                    if (node.depth % 2 == 0)
+                                        ContextCompat.getColor(context, android.R.color.transparent)
+                                    else
+                                        Color.parseColor("#0A000000")
+                                )
+                            }
+                        }
+                    }
+
+                    // ---- 双击复制 XPath ----
+                    var lastClickTime = 0L
+                    rowLayout.setOnLongClickListener {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        val clip = ClipData.newPlainText("XPath", node.xpath)
+                        clipboard.setPrimaryClip(clip)
+                        Toast.makeText(context, "已复制 XPath: ${node.xpath}", Toast.LENGTH_SHORT).show()
+                        onSelectXPath(node.xpath)
+                        true
+                    }
+
+                    rowLayout
                 }
             }
 
-            /**
-             * 构建子节点容器（始终缓存，后续只切换可见性）。
-             * 此容器始终被添加到父容器或 treeContainer（不依赖展开状态），
-             * 展开/折叠只切换 View.VISIBLE / View.GONE。
-             */
             fun buildChildrenContainer(node: TreeNode): LinearLayout? {
                 if (!node.hasChildren) return null
                 return childContainerCache.getOrPut(node.id) {
                     LinearLayout(context).apply {
                         orientation = LinearLayout.VERTICAL
-                        visibility = if (expandedIds.contains(node.id) || node.id in searchExpandIds) View.VISIBLE else View.GONE
+                        visibility = if (expandedIds.contains(node.id) || node.id in searchExpandIds)
+                            View.VISIBLE else View.GONE
                         for (child in node.children) {
                             addView(buildRow(child))
                             buildChildrenContainer(child)?.let { addView(it) }
@@ -155,20 +299,21 @@ object HtmlTreeDialog {
                 }
             }
 
+            // ===== 渲染函数 =====
             fun render() {
                 treeContainer.removeAllViews()
                 viewCache.clear()
                 childContainerCache.clear()
 
                 val query = searchQuery.toString().lowercase()
-                // 搜索时计算匹配节点和祖先展开路径
                 matchIds.clear()
                 searchExpandIds.clear()
 
                 if (query.isNotEmpty()) {
                     fun walkSearch(node: TreeNode): Boolean {
                         val matches = node.displayText.lowercase().contains(query) ||
-                                node.textContent.lowercase().contains(query)
+                                node.textContent.lowercase().contains(query) ||
+                                node.tagName.lowercase().contains(query)
                         val childMatch = node.children.any { walkSearch(it) }
                         if (matches || childMatch) {
                             matchIds.add(node.id)
@@ -180,22 +325,23 @@ object HtmlTreeDialog {
                     for (root in rootNodes) walkSearch(root)
                 }
 
-                // 改写 flattenAndAdd 闭包，捕获 matchIds/searchExpandIds
                 fun flattenAndAddSearch(node: TreeNode) {
                     if (query.isNotEmpty() && node.id !in matchIds) return
 
                     val isMatch = query.isNotEmpty() && (
-                        node.displayText.lowercase().contains(query) ||
-                        node.textContent.lowercase().contains(query)
+                            node.displayText.lowercase().contains(query) ||
+                            node.textContent.lowercase().contains(query) ||
+                            node.tagName.lowercase().contains(query)
                     )
 
                     treeContainer.addView(buildRow(node))
 
-                    // 搜索匹配行加高亮标记
                     if (isMatch) {
                         treeContainer.getChildAt(treeContainer.childCount - 1)?.let { row ->
                             row.setBackgroundColor(
-                                ContextCompat.getColor(context, android.R.color.holo_blue_light)
+                                Color.parseColor("#40" + Integer.toHexString(
+                                    ContextCompat.getColor(context, android.R.color.holo_blue_light)
+                                ).substring(2))
                             )
                             row.tag = "match_${node.id}"
                         }
@@ -213,7 +359,6 @@ object HtmlTreeDialog {
                     flattenAndAddSearch(rootNode)
                 }
 
-                // 搜索时滚动到第一个匹配项
                 if (query.isNotEmpty()) {
                     val firstMatchId = matchIds.firstOrNull() ?: return
                     treeContainer.post {
@@ -231,7 +376,7 @@ object HtmlTreeDialog {
                 }
             }
 
-            // ── 5. 搜索栏 ──
+            // ===== 搜索栏 =====
             val searchInput = EditText(context).apply {
                 hint = "搜索标签名 / 属性 / 文本内容..."
                 textSize = 14f
@@ -247,22 +392,74 @@ object HtmlTreeDialog {
                         searchQuery.append(s?.toString() ?: "")
                         render()
                     }
-                    override fun beforeTextChanged(
-                        s: CharSequence?, start: Int, count: Int, after: Int
-                    ) {}
-                    override fun onTextChanged(
-                        s: CharSequence?, start: Int, before: Int, count: Int
-                    ) {}
+                    override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                    override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
                 })
             }
 
-            // ── 6. 底部缩放控制栏 ──
-            val scaleBar = createScaleBar(context, minScale, maxScale) { factor ->
+            // ===== 底部工具栏（增强版） =====
+            val toolbarLayout = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(0, 8, 0, 8)
+            }
+
+            // 第一行：展开/折叠控制
+            val controlRow = LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+            }
+
+            val btnExpandAll = MaterialButton(context).apply {
+                text = "全部展开"
+                textSize = 12f
+                setPadding(12, 4, 12, 4)
+                setOnClickListener {
+                    // 展开所有节点
+                    fun expandAll(node: TreeNode) {
+                        expandedIds.add(node.id)
+                        node.children.forEach { expandAll(it) }
+                    }
+                    rootNodes.forEach { expandAll(it) }
+                    render()
+                }
+            }
+
+            val btnCollapseAll = MaterialButton(context).apply {
+                text = "全部折叠"
+                textSize = 12f
+                setPadding(12, 4, 12, 4)
+                setOnClickListener {
+                    expandedIds.clear()
+                    render()
+                }
+            }
+
+            val btnExpandToLevel = MaterialButton(context).apply {
+                text = "展开到..."
+                textSize = 12f
+                setPadding(12, 4, 12, 4)
+                setOnClickListener {
+                    showLevelPicker(context, rootNodes, expandedIds) { render() }
+                }
+            }
+
+            controlRow.addView(btnExpandAll)
+            controlRow.addView(btnCollapseAll, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { marginStart = 12; marginEnd = 12 })
+            controlRow.addView(btnExpandToLevel)
+
+            toolbarLayout.addView(controlRow)
+
+            // 第二行：缩放控制
+            val scaleRow = createScaleBar(context, minScale, maxScale) { factor ->
                 zoomWrapper.scaleX = factor
                 zoomWrapper.scaleY = factor
             }
+            toolbarLayout.addView(scaleRow)
 
-            // ── 7. 总布局 ──
+// ===== 总布局 =====
             val bodyLayout = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 layoutParams = ViewGroup.LayoutParams(
@@ -274,22 +471,21 @@ object HtmlTreeDialog {
                     scrollView,
                     LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
-                        480.dp(context)
+                        400.dp(context)
                     )
                 )
-                addView(scaleBar)
+                addView(toolbarLayout)
             }
 
-            // ── 8. 标题 ──
             val titleView = TextView(context).apply {
-                text = "HTML 结构"
-                textSize = 20f
+                text = "HTML 结构（点击行展开/折叠）"
+                textSize = 18f
                 typeface = Typeface.DEFAULT_BOLD
                 gravity = Gravity.CENTER
-                setPadding(24, 20, 24, 8)
+                setPadding(24, 16, 24, 8)
+                setTextColor(ContextCompat.getColor(context, R.color.md_primary))
             }
 
-            // ── 9. 弹出对话框 ──
             MaterialAlertDialogBuilder(
                 context,
                 com.google.android.material.R.style.ThemeOverlay_Material3_MaterialAlertDialog_Centered
@@ -299,333 +495,149 @@ object HtmlTreeDialog {
                 .setPositiveButton("关闭", null)
                 .show()
 
-            // ── 10. 首次渲染 ──
             render()
 
         } catch (e: Exception) {
+            e.printStackTrace()
             Toast.makeText(context, "解析失败: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
-    // ─── DOM 解析与树构建 ──────────────────────────────────────────────────
+    // ===== 展开到指定层级对话框 =====
+    private fun showLevelPicker(
+        context: Context,
+        rootNodes: List<TreeNode>,
+        expandedIds: MutableSet<Int>,
+        onComplete: () -> Unit
+    ) {
+        val maxDepth = rootNodes.maxOfOrNull { getMaxDepth(it) } ?: 1
+        val levels = (1..maxDepth).map { "展开到第 ${it} 层" }.toTypedArray()
 
-    /**
-     * 将 HTML 字符串解析为 DOM Document。
-     */
-    private fun parseHtmlToDom(htmlContent: String): Document? {
-        return try {
-            val factory = DocumentBuilderFactory.newInstance()
-            factory.isNamespaceAware = false
-            val builder = factory.newDocumentBuilder()
-            builder.parse(InputSource(StringReader(htmlContent)))
-        } catch (e: Exception) {
-            try {
-                val wellFormed = htmlToWellFormedXml(htmlContent)
-                val factory = DocumentBuilderFactory.newInstance()
-                factory.isNamespaceAware = false
-                val builder = factory.newDocumentBuilder()
-                builder.parse(InputSource(StringReader(wellFormed)))
-            } catch (e2: Exception) {
-                null
-            }
-        }
-    }
-
-    /**
-     * 将非格式良好的 HTML 转为格式良好的 XML。
-     */
-    private fun htmlToWellFormedXml(html: String): String {
-        var s = html
-        if (!s.trimStart().startsWith("<")) {
-            s = "<root>$s</root>"
-        }
-        s = s.replace(Regex("<script[^>]*>[\\s\\S]*?</script>", RegexOption.IGNORE_CASE), "")
-        s = s.replace(Regex("<style[^>]*>[\\s\\S]*?</style>", RegexOption.IGNORE_CASE), "")
-        val voidTags = setOf(
-            "area", "base", "br", "col", "embed", "hr", "img", "input",
-            "link", "meta", "param", "source", "track", "wbr"
-        )
-        s = s.replace(Regex("<(${voidTags.joinToString("|")})([^>]*)>", RegexOption.IGNORE_CASE)) {
-            val tag = it.groupValues[1].lowercase()
-            val attrs = it.groupValues[2]
-            if (attrs.trimEnd().endsWith("/")) "<$tag$attrs>" else "<$tag$attrs />"
-        }
-        s = s.replace(Regex("""<[^>]+>""")) { match ->
-            val fullTag = match.value
-            fullTag.replace(Regex("""\s+([a-zA-Z_][-a-zA-Z0-9_:]*)(?=\s|/?>)""")) { attrMatch ->
-                val before = fullTag.substring(0, attrMatch.range.first)
-                if (before.count { it == '"' } % 2 == 0) {
-                    " ${attrMatch.groupValues[1]}=\"${attrMatch.groupValues[1]}\""
-                } else {
-                    attrMatch.value
+        MaterialAlertDialogBuilder(context)
+            .setTitle("选择展开层级")
+            .setItems(levels) { _, which ->
+                val targetLevel = which + 1
+                expandedIds.clear()
+                fun expandToLevel(node: TreeNode, depth: Int) {
+                    if (depth < targetLevel) {
+                        expandedIds.add(node.id)
+                        node.children.forEach { expandToLevel(it, depth + 1) }
+                    }
                 }
+                rootNodes.forEach { expandToLevel(it, 0) }
+                onComplete()
             }
-        }
-        s = s.replace(Regex("&(?!amp;|lt;|gt;|quot;|apos;|#[0-9]+;|#x[0-9a-fA-F]+;)", RegexOption.IGNORE_CASE), "&")
-        return s
+            .setNegativeButton("取消", null)
+            .show()
     }
 
-    /**
-     * 从 DOM Document 构建 TreeNode 树。
-     */
-    private fun buildTreeFromDom(doc: Document): List<TreeNode> {
+    private fun getMaxDepth(node: TreeNode): Int {
+        return if (node.children.isEmpty()) node.depth + 1
+        else node.children.maxOf { getMaxDepth(it) }
+    }
+
+    // ===== 标签颜色 =====
+    private fun getTagColor(context: Context, tagName: String): Int {
+        return when (tagName.lowercase()) {
+            "div", "span", "section", "article", "header", "footer", "main", "nav" ->
+                ContextCompat.getColor(context, R.color.html_tag_color)  // 蓝
+            "a", "link" ->
+                Color.parseColor("#2E7D32")  // 绿
+            "img", "video", "audio", "source", "picture" ->
+                Color.parseColor("#E65100")  // 橙
+            "h1", "h2", "h3", "h4", "h5", "h6", "p", "b", "strong", "i", "em" ->
+                Color.parseColor("#6A1B9A")  // 紫
+            "button", "input", "form", "select", "textarea", "label" ->
+                Color.parseColor("#00695C")  // 青绿
+            "script", "style", "noscript" ->
+                Color.parseColor("#757575")  // 灰
+            else -> ContextCompat.getColor(context, R.color.md_on_surface)
+        }
+    }
+
+    // ===== Jsoup 树构建 =====
+    private fun buildTreeFromJsoup(doc: Document): List<TreeNode> {
         var nextId = 0
-        val body = doc.documentElement
+        val body = doc.body() ?: doc
 
         fun buildTree(el: Element, depth: Int): TreeNode {
             val id = nextId++
             val xpath = buildXPathSimple(el)
-            val display = buildDisplayText(el, depth)
-            val text = el.ownTextTrim()
-            val kids = getChildElements(el).map { buildTree(it, depth + 1) }
-            return TreeNode(id, depth, xpath, kids, display, text, kids.isNotEmpty())
+            val display = buildDisplayText(el)
+            val text = el.ownText().trim()
+            val kids = el.children().map { buildTree(it, depth + 1) }
+            val hasImportantAttr = el.hasAttr("id") || el.hasAttr("class") ||
+                    el.attributes().asList().any { it.key.startsWith("data-") }
+            return TreeNode(id, depth, xpath, kids, display, text, kids.isNotEmpty(), el.tagName(), hasImportantAttr)
         }
 
-        return getChildElements(body).map { buildTree(it, 0) }
+        return body.children().map { buildTree(it, 0) }
     }
 
-    /**
-     * 获取 Element 的直接子 Element。
-     */
-    private fun getChildElements(parent: Element): List<Element> {
-        val result = mutableListOf<Element>()
-        val children: NodeList = parent.childNodes
-        for (i in 0 until children.length) {
-            val node = children.item(i)
-            if (node.nodeType == Node.ELEMENT_NODE) {
-                result.add(node as Element)
-            }
-        }
-        return result
-    }
-
-    private fun Element.tagNameLower(): String = tagName.lowercase()
-
-    private fun Element.hasAttr(name: String): Boolean = hasAttribute(name)
-
-    private fun Element.attr(name: String): String = getAttribute(name)
-
-    private fun Element.classes(): String = getAttribute("class").trim()
-
-    private fun Element.ownTextTrim(): String {
+    private fun buildDisplayText(element: Element): String {
         val sb = StringBuilder()
-        val children: NodeList = childNodes
-        for (i in 0 until children.length) {
-            val node = children.item(i)
-            if (node.nodeType == Node.TEXT_NODE) {
-                sb.append(node.nodeValue ?: "")
-            }
-        }
-        return sb.toString().trim()
-    }
-
-    private fun Element.parentElement(): Element? {
-        val p = parentNode
-        return if (p is Element) p else null
-    }
-
-    private fun Element.siblingIndexForTag(): Int {
-        val parent = parentElement() ?: return 0
-        val tag = tagNameLower()
-        val siblings = getChildElements(parent).filter { it.tagNameLower() == tag }
-        return siblings.indexOf(this)
-    }
-
-    // ─── 工具方法 ──────────────────────────────────────────────────────────
-
-    /**
-     * 构建节点显示文本
-     */
-    private fun buildDisplayText(element: Element, depth: Int): String {
-        val tag = element.tagNameLower()
-        val idStr = if (element.hasAttr("id")) "#${element.attr("id")}" else ""
-        val clsStr = element.classes()
-        val classStr = if (clsStr.isNotEmpty()) ".$clsStr" else ""
-
-        val sb = StringBuilder(tag)
-        sb.append(idStr).append(classStr)
-
-        // 显示关键属性（最多 2 个）
         var added = 0
-        for (attr in listOf("href", "src", "title", "alt", "data-src", "data-original")) {
+        for (attr in listOf("href", "src", "title", "alt", "data-src", "data-original", "class", "id")) {
             if (element.hasAttr(attr)) {
                 val v = element.attr(attr)
-                sb.append(" $attr=\"${if (v.length <= 28) v else "${v.take(25)}..."}\"")
-                if (++added >= 2) break
+                if (v.isNotBlank()) {
+                    sb.append(" $attr=\"${if (v.length <= 20) v else "${v.take(18)}..."}\"")
+                    if (++added >= 2) break
+                }
             }
         }
-
-        // 显示文本内容片段
-        val text = element.ownTextTrim().take(24)
+        val text = element.ownText().trim().take(20)
         if (text.isNotEmpty()) {
             val escaped = text.replace("\n", " ").replace(Regex("\\s+"), " ")
-            sb.append(" \u00AB$escaped\u00BB")
+            sb.append(" \"$escaped\"")
         }
-
-        return "<$sb>"
+        return sb.toString()
     }
 
-    /**
-     * 从 element 向上构建简洁 XPath
-     *
-     * 生成规则（优先级递减）：
-     * 1. 有 id → `[@id='xxx']`
-     * 2. 有 class → `[@class='a b']`
-     * 3. 有独特文本 → `[text()='xxx']`
-     * 4. 同标签兄弟 → `[n]` 精确索引
-     * 5. 有 data-* 属性 → `[@data-xxx='val']`
-     */
     private fun buildXPathSimple(element: Element): String {
         val parts = mutableListOf<String>()
         var cur: Element? = element
-        while (cur != null && cur.tagNameLower() !in listOf("body", "html")) {
-            val tag = cur!!.tagNameLower()
+        while (cur != null && cur.tagName() !in listOf("body", "html")) {
+            val tag = cur.tagName()
             val preds = mutableListOf<String>()
-
-            // 1. id 属性（唯一标识，优先级最高）
-            if (cur!!.hasAttr("id")) {
-                preds.add("@id='${cur!!.attr("id")}'")
+            if (cur.hasAttr("id")) {
+                preds.add("@id='${cur.id()}'")
             }
-
-            // 2. class 属性
-            val classStr = cur!!.classes()
+            val classStr = cur.className()
             if (classStr.isNotEmpty()) {
                 preds.add("@class='$classStr'")
             }
-
-            // 3. 独特文本内容（非空且建议长度 >3，避免过短文本误匹配）
-            val ownText = cur!!.ownTextTrim()
+            val ownText = cur.ownText().trim()
             if (preds.isEmpty() && ownText.length > 3) {
-                // 过滤文本中的单引号避免破坏 XPath 语法
                 val safeText = ownText.filter { it != '\'' }
                 preds.add("text()='$safeText'")
             }
-
-            // 4. data-* 属性（当没有 id/class/文本时，作为备用标识）
             if (preds.isEmpty()) {
-                val attrs = cur!!.getAttributes()
-                var dataKey: String? = null
-                var dataVal: String? = null
-                for (i in 0 until attrs.length) {
-                    val attr = attrs.item(i)
-                    val name = attr.nodeName ?: ""
-                    val value = attr.nodeValue ?: ""
+                for (attr in cur.attributes()) {
+                    val name = attr.key
+                    val value = attr.value
                     if (name.startsWith("data-") && value.isNotBlank()) {
-                        dataKey = name
-                        dataVal = value
+                        preds.add("@$name='$value'")
                         break
                     }
                 }
-                if (dataKey != null && dataVal != null) {
-                    preds.add("@$dataKey='$dataVal'")
-                }
             }
-
-            // 5. 同标签兄弟 → 精确索引 [n]
-            val parent = cur!!.parentElement()
+            val parent = cur.parent()
             if (parent != null) {
-                val same = getChildElements(parent).filter { it.tagNameLower() == tag }
+                val same = parent.children().filter { it.tagName() == tag }
                 if (same.size > 1) {
-                    val idx = same.indexOfFirst { it == cur } + 1  // 1-based
+                    val idx = same.indexOfFirst { it == cur } + 1
                     preds.add("$idx")
                 }
             }
-
             val step = if (preds.isEmpty()) tag else "$tag[${preds.joinToString(" and ")}]"
             parts.add(0, step)
-            cur = cur!!.parentElement()
+            cur = cur.parent()
         }
         return "//" + parts.joinToString("/")
     }
 
-    /**
-     * 创建单行节点视图
-     */
-    private fun createRowView(
-        context: Context,
-        node: TreeNode,
-        isExpanded: Boolean,
-        expandedIds: Set<Int>,
-        onToggle: (Boolean) -> Unit,
-        onSelectXPath: (String) -> Unit
-    ): View {
-        val density = context.resources.displayMetrics.density
-        val indentPx = (node.depth * 28 * density).toInt()
-
-        // 箭头 / 圆点
-        val arrowView = TextView(context).apply {
-            text = when {
-                node.hasChildren && isExpanded -> "\u25BC"  // ▼
-                node.hasChildren -> "\u25B6"               // ▶
-                else -> "\u00B7"                            // ·
-            }
-            tag = "arrow_${node.id}"
-            textSize = 10f
-            setTextColor(
-                if (node.hasChildren)
-                    ContextCompat.getColor(context, R.color.md_primary)
-                else
-                    ContextCompat.getColor(context, R.color.md_outline)
-            )
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply {
-                gravity = Gravity.CENTER_VERTICAL
-                marginEnd = (6 * density).toInt()
-            }
-        }
-
-        // 标签语法高亮
-        val tagView = TextView(context).apply {
-            text = HtmlUtil.highlightTagHtml(context, node.displayText)
-            textSize = 12f
-            typeface = Typeface.MONOSPACE
-            layoutParams = LinearLayout.LayoutParams(
-                0,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                1f
-            )
-        }
-
-        // 行布局
-        val rowLayout = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(indentPx, 6, 12, 6)
-            setBackgroundColor(
-                ContextCompat.getColor(context, android.R.color.transparent)
-            )
-
-            addView(arrowView)
-            addView(tagView)
-
-            // 点击展开/折叠（使用实时 expandedIds 判断当前状态）
-            setOnClickListener {
-                if (node.hasChildren) {
-                    onToggle(!expandedIds.contains(node.id))
-                }
-            }
-
-            // 长按复制 XPath
-            setOnLongClickListener {
-                val clipboard =
-                    context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                val clip = ClipData.newPlainText("XPath", node.xpath)
-                clipboard.setPrimaryClip(clip)
-                Toast.makeText(context, "已复制 XPath: ${node.xpath}", Toast.LENGTH_SHORT)
-                    .show()
-                onSelectXPath(node.xpath)
-                true
-            }
-        }
-
-        // 交替行背景
-        return rowLayout
-    }
-
-    // ─── 缩放相关 ──────────────────────────────────────────────────────────
-
+    // ===== 缩放 =====
     private fun createZoomWrapper(
         context: Context,
         child: View,
@@ -633,26 +645,22 @@ object HtmlTreeDialog {
         maxScale: Float
     ): FrameLayout {
         var currentScale = 1.0f
-
         return object : FrameLayout(context) {
             private val detector = ScaleGestureDetector(
                 context,
                 object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
                     override fun onScale(detector: ScaleGestureDetector): Boolean {
-                        currentScale =
-                            (currentScale * detector.scaleFactor).coerceIn(minScale, maxScale)
+                        currentScale = (currentScale * detector.scaleFactor).coerceIn(minScale, maxScale)
                         scaleX = currentScale
                         scaleY = currentScale
                         return true
                     }
                 }
             )
-
             override fun onTouchEvent(event: MotionEvent): Boolean {
                 detector.onTouchEvent(event)
                 return super.onTouchEvent(event)
             }
-
             override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
                 detector.onTouchEvent(ev)
                 return super.onInterceptTouchEvent(ev)
@@ -666,9 +674,6 @@ object HtmlTreeDialog {
         }
     }
 
-    /**
-     * 创建底部缩放控制栏
-     */
     private fun createScaleBar(
         context: Context,
         minScale: Float,
@@ -678,11 +683,20 @@ object HtmlTreeDialog {
         var currentScale = 1.0f
         val step = 0.25f
 
+        val zoomOutBtn = MaterialButton(context).apply {
+            text = "−"
+            textSize = 18f
+            setPadding(12, 4, 12, 4)
+            setOnClickListener {
+                currentScale = (currentScale - step).coerceAtLeast(minScale)
+                onScaleChanged(currentScale)
+            }
+        }
+
         val resetBtn = MaterialButton(context).apply {
-            text = "1x"
+            text = "1×"
             textSize = 12f
-            strokeWidth = 1
-            setPadding(8, 2, 8, 2)
+            setPadding(12, 4, 12, 4)
             setOnClickListener {
                 currentScale = 1.0f
                 onScaleChanged(currentScale)
@@ -690,19 +704,11 @@ object HtmlTreeDialog {
         }
 
         val zoomInBtn = MaterialButton(context).apply {
-            text = "\u002B"
-            textSize = 16f
+            text = "+"
+            textSize = 18f
+            setPadding(12, 4, 12, 4)
             setOnClickListener {
                 currentScale = (currentScale + step).coerceAtMost(maxScale)
-                onScaleChanged(currentScale)
-            }
-        }
-
-        val zoomOutBtn = MaterialButton(context).apply {
-            text = "\u2212"
-            textSize = 16f
-            setOnClickListener {
-                currentScale = (currentScale - step).coerceAtLeast(minScale)
                 onScaleChanged(currentScale)
             }
         }
@@ -710,21 +716,15 @@ object HtmlTreeDialog {
         return LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            setPadding(0, 8, 0, 8)
+            setPadding(0, 4, 0, 4)
             addView(zoomOutBtn)
-            addView(resetBtn.apply {
-                layoutParams = ViewGroup.MarginLayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT
-                ).apply { marginStart = 16; marginEnd = 16 }
-            })
+            addView(resetBtn, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { marginStart = 16; marginEnd = 16 })
             addView(zoomInBtn)
         }
     }
 
-    // ─── 扩展辅助 ──────────────────────────────────────────────────────────
-
-    private fun Int.dp(context: Context): Int {
-        return (this * context.resources.displayMetrics.density).toInt()
-    }
+    private fun Int.dp(context: Context): Int = (this * context.resources.displayMetrics.density).toInt()
 }

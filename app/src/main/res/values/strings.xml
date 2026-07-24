@@ -1,3 +1,76 @@
 <resources>
     <string name="app_name">Crawler Tool</string>
+
+    <!-- 匹配模式 -->
+    <string name="mode_xpath">XPath</string>
+    <string name="mode_css">CSS选择器</string>
+    <string name="mode_regex">正则表达式</string>
+
+    <!-- 提示文本 -->
+    <string name="hint_url">输入网站URL...</string>
+    <string name="hint_xpath">XPath表达式(如 //a/@href)</string>
+    <string name="hint_css">CSS选择器(如 a[href])</string>
+    <string name="hint_regex">正则表达式(如 href="([^"]+)")</string>
+    <string name="hint_quick_attrs">快捷属性标签:</string>
+
+    <!-- 按钮 -->
+    <string name="btn_match">匹配</string>
+    <string name="btn_clear">清空</string>
+    <string name="btn_export">导出</string>
+    <string name="btn_copy_rule">复制规则</string>
+
+    <!-- 状态 -->
+    <string name="status_cleared">已清空</string>
+    <string name="status_fetching">正在请求并匹配...</string>
+    <string name="status_no_result">匹配完成,未找到结果</string>
+    <string name="status_failed">匹配失败</string>
+    <string name="status_results">匹配完成,共 %d 条结果</string>
+
+    <!-- 导出 -->
+    <string name="export_title">导出结果</string>
+    <string name="export_json">JSON</string>
+    <string name="export_csv">CSV</string>
+    <string name="export_text">纯文本</string>
+    <string name="export_success">已导出到: %s</string>
+    <string name="export_empty">没有可导出的结果</string>
+
+    <!-- 设置 -->
+    <string name="settings_title">设置</string>
+    <string name="settings_user_agent">User-Agent</string>
+    <string name="settings_connect_timeout">连接超时(秒)</string>
+    <string name="settings_read_timeout">读取超时(秒)</string>
+    <string name="settings_theme">默认主题</string>
+    <string name="settings_theme_system">跟随系统</string>
+    <string name="settings_theme_light">浅色</string>
+    <string name="settings_theme_dark">深色</string>
+
+    <!-- 批量抓取 -->
+    <string name="batch_title">批量抓取</string>
+    <string name="batch_start_page">起始页码</string>
+    <string name="batch_end_page">结束页码</string>
+    <string name="batch_url_pattern">URL模板(用 {page} 替代页码)</string>
+    <string name="batch_btn_start">开始批量抓取</string>
+    <string name="batch_progress">正在抓取第 %1$d/%2$d 页...</string>
+    <string name="batch_complete">批量抓取完成,共 %d 条结果</string>
+
+    <!-- 预览 -->
+    <string name="preview_webview">网页预览</string>
+    <string name="preview_image">图片预览</string>
+    <string name="preview_html">HTML预览</string>
+
+    <!-- 关于 -->
+    <string name="about_title">关于 Crawler Tool</string>
+    <string name="about_message">Crawler Tool v1.2\n\n一个轻量级网页数据爬取工具,支持 XPath/CSS选择器/正则表达式匹配,提供 HTML 结构查看、预览和导出功能。\n\nBy: SoloSu</string>
+
+    <!-- 菜单 -->
+    <string name="menu_about">关于</string>
+    <string name="menu_xpath_rules">XPath规则</string>
+    <string name="menu_view_structure">查看结构</string>
+    <string name="menu_settings">设置</string>
+    <string name="menu_export">导出</string>
+
+    <!-- 错误 -->
+    <string name="error_no_url">请输入有效的URL</string>
+    <string name="error_no_expression">请输入匹配表达式</string>
+    <string name="error_fetch_failed">获取失败: %s</string>
 </resources>
