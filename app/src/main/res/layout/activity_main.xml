@@ -319,6 +319,17 @@
 
                         <com.google.android.material.textfield.TextInputEditText
                             android:id="@+id/etBatchUrlPattern"
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnBatchStart"
+                        android:layout_width="match_parent"
+                        android:layout_height="36dp"
+                        android:text="开始批量抓取"
+                        android:textSize="12sp"
+                        android:minHeight="0dp"
+                        app:cornerRadius="18dp"
+                        app:backgroundTint="@color/md_primary"
+                        android:textColor="@color/md_on_primary" />
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:inputType="textUri"
@@ -367,6 +378,35 @@
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnClear"
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnPasteUrl"
+                        android:layout_width="0dp"
+                        android:layout_height="44dp"
+                        android:layout_weight="1"
+                        android:layout_marginStart="4dp"
+                        android:layout_marginEnd="4dp"
+                        android:text="粘贴URL"
+                        android:textSize="12sp"
+                        android:singleLine="true"
+                        android:includeFontPadding="false"
+                        app:cornerRadius="22dp"
+                        app:backgroundTint="@color/md_primary_container"
+                        android:textColor="@color/md_on_primary_container" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnShare"
+                        android:layout_width="0dp"
+                        android:layout_height="44dp"
+                        android:layout_weight="1"
+                        android:layout_marginStart="4dp"
+                        android:text="分享"
+                        android:textSize="12sp"
+                        android:singleLine="true"
+                        android:includeFontPadding="false"
+                        app:cornerRadius="22dp"
+                        app:backgroundTint="@color/md_secondary"
+                        android:textColor="@color/md_on_primary" />
                         android:layout_width="0dp"
                         android:layout_height="44dp"
                         android:layout_weight="1"

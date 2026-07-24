@@ -171,6 +171,286 @@
 
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- 保存历史 -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                app:cardElevation="2dp"
+                app:cardCornerRadius="12dp"
+                app:cardBackgroundColor="@color/card_bg">
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+                    <com.google.android.material.switchmaterial.SwitchMaterial
+                        android:id="@+id/switchSaveHistory"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/settings_save_history"
+                        android:textColor="@color/md_on_surface" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+            <!-- 语言设置 -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                app:cardElevation="2dp"
+                app:cardCornerRadius="12dp"
+                app:cardBackgroundColor="@color/card_bg">
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/settings_language"
+                        android:textSize="16sp"
+                        android:textColor="@color/md_on_surface"
+                        android:textStyle="bold"
+                        android:layout_marginBottom="8dp" />
+                    <RadioGroup
+                        android:id="@+id/radioGroupLanguage"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal">
+                        <RadioButton
+                            android:id="@+id/radioLangZh"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/settings_language_zh"
+                            android:textColor="@color/md_on_surface"
+                            android:checked="true" />
+                        <RadioButton
+                            android:id="@+id/radioLangEn"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/settings_language_en"
+                            android:textColor="@color/md_on_surface" />
+                    </RadioGroup>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+            <!-- 自定义请求头 -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                app:cardElevation="2dp"
+                app:cardCornerRadius="12dp"
+                app:cardBackgroundColor="@color/card_bg">
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/settings_custom_headers"
+                        android:textSize="16sp"
+                        android:textColor="@color/md_on_surface"
+                        android:textStyle="bold"
+                        android:layout_marginBottom="4dp" />
+                    <TextView
+                        android:id="@+id/tvHeaderCount"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="暂无自定义请求头"
+                        android:textSize="13sp"
+                        android:textColor="@color/md_on_surface_variant"
+                        android:layout_marginBottom="8dp" />
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnManageHeaders"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="管理请求头"
+                        android:textSize="12sp"
+                        android:minHeight="0dp"
+                        android:paddingVertical="6dp"
+                        app:cornerRadius="16dp" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+            <!-- JS渲染 -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                app:cardElevation="2dp"
+                app:cardCornerRadius="12dp"
+                app:cardBackgroundColor="@color/card_bg">
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/settings_js_render"
+                        android:textSize="16sp"
+                        android:textColor="@color/md_on_surface"
+                        android:textStyle="bold"
+                        android:layout_marginBottom="4dp" />
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/settings_js_render_summary"
+                        android:textSize="12sp"
+                        android:textColor="@color/md_on_surface_variant"
+                        android:layout_marginBottom="8dp" />
+                    <com.google.android.material.switchmaterial.SwitchMaterial
+                        android:id="@+id/switchJsRender"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="启用JS渲染"
+                        android:textColor="@color/md_on_surface" />
+                    <TextView
+                        android:id="@+id/tvJsDelay"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="3 秒"
+                        android:textSize="14sp"
+                        android:textColor="@color/md_primary"
+                        android:layout_marginTop="8dp"
+                        android:visibility="gone" />
+                    <com.google.android.material.slider.Slider
+                        android:id="@+id/sliderJsDelay"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:valueFrom="1"
+                        android:valueTo="10"
+                        android:value="3"
+                        android:stepSize="1"
+                        android:visibility="gone" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+            <!-- 代理设置 -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                app:cardElevation="2dp"
+                app:cardCornerRadius="12dp"
+                app:cardBackgroundColor="@color/card_bg">
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/settings_proxy"
+                        android:textSize="16sp"
+                        android:textColor="@color/md_on_surface"
+                        android:textStyle="bold"
+                        android:layout_marginBottom="8dp" />
+                    <com.google.android.material.switchmaterial.SwitchMaterial
+                        android:id="@+id/switchProxy"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/settings_proxy_enable"
+                        android:textColor="@color/md_on_surface" />
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/etProxyHost"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:hint="@string/settings_proxy_host"
+                        android:inputType="text"
+                        android:singleLine="true"
+                        android:visibility="gone" />
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/etProxyPort"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:hint="@string/settings_proxy_port"
+                        android:inputType="number"
+                        android:singleLine="true"
+                        android:visibility="gone" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+            <!-- 失败重试次数 -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                app:cardElevation="2dp"
+                app:cardCornerRadius="12dp"
+                app:cardBackgroundColor="@color/card_bg">
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/settings_batch_retry"
+                        android:textSize="16sp"
+                        android:textColor="@color/md_on_surface"
+                        android:textStyle="bold"
+                        android:layout_marginBottom="4dp" />
+                    <TextView
+                        android:id="@+id/tvRetry"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="1 次"
+                        android:textSize="14sp"
+                        android:textColor="@color/md_primary"
+                        android:layout_marginBottom="8dp" />
+                    <com.google.android.material.slider.Slider
+                        android:id="@+id/sliderRetry"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:valueFrom="0"
+                        android:valueTo="5"
+                        android:value="1"
+                        android:stepSize="1" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+            <!-- 批量请求延迟 -->
+            <com.google.android.material.card.MaterialCardView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                app:cardElevation="2dp"
+                app:cardCornerRadius="12dp"
+                app:cardBackgroundColor="@color/card_bg">
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/settings_batch_delay"
+                        android:textSize="16sp"
+                        android:textColor="@color/md_on_surface"
+                        android:textStyle="bold"
+                        android:layout_marginBottom="4dp" />
+                    <TextView
+                        android:id="@+id/tvBatchDelay"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="无延迟"
+                        android:textSize="14sp"
+                        android:textColor="@color/md_primary"
+                        android:layout_marginBottom="8dp" />
+                    <com.google.android.material.slider.Slider
+                        android:id="@+id/sliderBatchDelay"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:valueFrom="0"
+                        android:valueTo="5000"
+                        android:value="0"
+                        android:stepSize="500" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
             <!-- 默认主题 -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"

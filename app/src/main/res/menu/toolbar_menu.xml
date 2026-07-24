@@ -1,28 +1,82 @@
 <?xml version="1.0" encoding="utf-8"?>
-<menu xmlns:android="http://schemas.android.com/apk/res/android">
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
     <item
         android:id="@+id/action_export"
+        android:title="导出"
+        android:icon="@android:drawable/ic_menu_save"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_share"
+        android:title="分享结果"
         android:icon="@android:drawable/ic_menu_share"
-        android:title="@string/menu_export"
-        android:showAsAction="ifRoom" />
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_history"
+        android:title="历史记录"
+        android:icon="@android:drawable/ic_menu_recent_history"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_filter"
+        android:title="数据过滤"
+        android:icon="@android:drawable/ic_menu_sort_by_size"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_image_preview"
+        android:title="图片预览"
+        android:icon="@android:drawable/ic_menu_gallery"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_regex_tester"
+        android:title="正则测试器"
+        android:icon="@android:drawable/ic_menu_edit"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_url_toolkit"
+        android:title="URL工具"
+        android:icon="@android:drawable/ic_menu_manage"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_stats"
+        android:title="统计信息"
+        android:icon="@android:drawable/ic_menu_info_details"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_schedule"
+        android:title="定时任务"
+        android:icon="@android:drawable/ic_menu_alarm"
+        app:showAsAction="never" />
+
     <item
         android:id="@+id/action_view_structure"
+        android:title="查看结构"
         android:icon="@android:drawable/ic_menu_view"
-        android:title="@string/menu_view_structure"
-        android:showAsAction="never" />
+        app:showAsAction="never" />
+
     <item
         android:id="@+id/action_xpath_rules"
-        android:icon="@android:drawable/ic_menu_help"
-        android:title="@string/menu_xpath_rules"
-        android:showAsAction="never" />
+        android:title="XPath规则"
+        app:showAsAction="never" />
+
     <item
         android:id="@+id/action_settings"
+        android:title="设置"
         android:icon="@android:drawable/ic_menu_preferences"
-        android:title="@string/menu_settings"
-        android:showAsAction="never" />
+        app:showAsAction="never" />
+
     <item
         android:id="@+id/action_about"
+        android:title="关于"
         android:icon="@android:drawable/ic_menu_info_details"
-        android:title="@string/menu_about"
-        android:showAsAction="never" />
+        app:showAsAction="never" />
+
 </menu>
