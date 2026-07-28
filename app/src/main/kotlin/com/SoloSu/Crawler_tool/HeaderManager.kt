@@ -26,15 +26,6 @@ object HeaderManager {
     private fun getPrefs(context: Context): SharedPreferences =
         context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
 
-    // ─── 预设模板 ──────────────────────────────────────────────
-
-    val PRESET_TEMPLATES = listOf(
-        HeaderEntry("Authorization", "Bearer <token>", isBuiltin = true),
-        HeaderEntry("Cookie", "session_id=<value>", isBuiltin = true),
-        HeaderEntry("Referer", "https://example.com", isBuiltin = true),
-        HeaderEntry("X-Requested-With", "XMLHttpRequest", isBuiltin = true),
-        HeaderEntry("Origin", "https://example.com", isBuiltin = true)
-    )
 
     // ─── CRUD ──────────────────────────────────────────────────
 
@@ -68,15 +59,11 @@ object HeaderManager {
         }
     }
 
-    fun clearAll(context: Context) {
-        val prefs = getPrefs(context)
-        prefs.edit().remove(KEY_HEADERS).apply()
-    }
 
     // ─── 启用/禁用 ──────────────────────────────────────────────
 
     fun isEnabled(context: Context): Boolean {
-        return getPrefs(context).getBoolean(KEY_ENABLED, true)
+        return getPrefs(context).getBoolean(KEY_ENABLED, false)
     }
 
     fun setEnabled(context: Context, enabled: Boolean) {
@@ -85,9 +72,6 @@ object HeaderManager {
 
     // ─── Cookie 快捷操作 ───────────────────────────────────────
 
-    fun saveCookie(context: Context, cookieString: String) {
-        getPrefs(context).edit().putString(KEY_COOKIES, cookieString).apply()
-    }
 
     fun getCookie(context: Context): String {
         return getPrefs(context).getString(KEY_COOKIES, "") ?: ""

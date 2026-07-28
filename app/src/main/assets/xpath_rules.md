@@ -1,5 +1,3 @@
-# XPath 表达式 使用指南
-
 XPath 是一种在 XML/HTML 文档中查找信息的语言。本工具先将 HTML 转为 XHTML 后使用 XPath 解析。
 
 ## 基本路径表达式

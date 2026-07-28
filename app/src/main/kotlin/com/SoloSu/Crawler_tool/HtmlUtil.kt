@@ -11,14 +11,6 @@ import java.util.regex.Pattern
  */
 object HtmlUtil {
 
-    private val HIGHLIGHT_PATTERN = Pattern.compile(
-        "(</?)" +
-        "|(/?>)" +
-        "|([a-zA-Z][\\w-]*)" +
-        "|(=\"[^\"]*\")" +
-        "|(='[^']*')" +
-        "|(=)"
-    )
 
     /**
      * 为 HTML 标签字符串生成语法高亮的 SpannableString

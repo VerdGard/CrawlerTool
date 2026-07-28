@@ -1,13 +1,11 @@
 package com.SoloSu.Crawler_tool
 
 import android.content.Context
-import android.graphics.Bitmap
 import android.os.Handler
 import android.os.Looper
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import kotlinx.coroutines.suspendCancellableCoroutine
-import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 
@@ -90,49 +88,6 @@ object JsRenderEngine {
 
     /**
      * 同步渲染（用于非协程环境）
-     */
-    fun renderSync(context: Context, url: String, waitSeconds: Int = 3): Result<String> {
-        val latch = CountDownLatch(1)
-        var result: Result<String>? = null
-
-        mainHandler.post {
-            try {
-                val wv = WebView(context).apply {
-                    settings.javaScriptEnabled = true
-                    settings.loadWithOverviewMode = true
-                    settings.useWideViewPort = true
-                    settings.domStorageEnabled = true
-
-                    webViewClient = object : WebViewClient() {
-                        override fun onPageFinished(view: WebView?, urlStr: String?) {
-                            view?.postDelayed({
-                                view.evaluateJavascript(
-                                    "(function() { return document.documentElement.outerHTML; })()"
-                                ) { html ->
-                                    val decoded = decodeUnicodeEscapes(html ?: "")
-                                    result = Result.success(decoded)
-                                    webView?.destroy()
-                                    webView = null
-                                    latch.countDown()
-                                }
-                            }, (waitSeconds * 1000).toLong())
-                        }
-                    }
-                }
-                webView = wv
-                wv.loadUrl(url)
-            } catch (e: Exception) {
-                result = Result.failure(e)
-                latch.countDown()
-            }
-        }
-
-        latch.await(waitSeconds + 5L, TimeUnit.SECONDS)
-        return result ?: Result.failure(Exception("JS渲染超时或无结果"))
-    }
-
-    /**
-     * 解码 WebView evaluateJavascript 返回的 Unicode 转义序列
      */
     private fun decodeUnicodeEscapes(input: String): String {
         val sb = StringBuilder()

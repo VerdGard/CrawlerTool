@@ -28,6 +28,8 @@ import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import android.graphics.drawable.GradientDrawable
+import com.google.android.material.textfield.TextInputLayout
+import com.google.android.material.textfield.TextInputEditText
 
 /**
  * HTML 树形结构对话框 — 增强交互版
@@ -377,15 +379,18 @@ if (node.hasImportantAttr) {
             }
 
             // ===== 搜索栏 =====
-            val searchInput = EditText(context).apply {
-                hint = "搜索标签名 / 属性 / 文本内容..."
-                textSize = 14f
-                setPadding(16, 12, 16, 12)
-                isSingleLine = true
-                compoundDrawablePadding = 8
-                setCompoundDrawablesRelativeWithIntrinsicBounds(
-                    android.R.drawable.ic_menu_search, 0, 0, 0
+            val searchInputLayout = TextInputLayout(context).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT
                 )
+                hint = "搜索标签名 / 属性 / 文本内容..."
+                isHintEnabled = true
+                boxBackgroundMode = TextInputLayout.BOX_BACKGROUND_OUTLINE
+                startIconDrawable = androidx.appcompat.content.res.AppCompatResources.getDrawable(context, android.R.drawable.ic_menu_search)
+            }
+            val searchInput = TextInputEditText(context).apply {
+                setSingleLine(true)
                 addTextChangedListener(object : TextWatcher {
                     override fun afterTextChanged(s: Editable?) {
                         searchQuery.clear()
@@ -396,6 +401,7 @@ if (node.hasImportantAttr) {
                     override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
                 })
             }
+            searchInputLayout.addView(searchInput)
 
             // ===== 底部工具栏（增强版） =====
             val toolbarLayout = LinearLayout(context).apply {
@@ -466,7 +472,7 @@ if (node.hasImportantAttr) {
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT
                 )
-                addView(searchInput)
+                addView(searchInputLayout)
                 addView(
                     scrollView,
                     LinearLayout.LayoutParams(
@@ -478,7 +484,7 @@ if (node.hasImportantAttr) {
             }
 
             val titleView = TextView(context).apply {
-                text = "HTML 结构（点击行展开/折叠）"
+                text = "HTML 结构"
                 textSize = 18f
                 typeface = Typeface.DEFAULT_BOLD
                 gravity = Gravity.CENTER

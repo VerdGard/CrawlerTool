@@ -1,10 +1,8 @@
 package com.SoloSu.Crawler_tool
 
 import org.jsoup.Jsoup
-import org.jsoup.nodes.Comment
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
-import org.jsoup.nodes.Node
 import org.jsoup.nodes.TextNode
 import org.jsoup.select.Elements
 
@@ -835,7 +833,4 @@ private fun parseSteps(expression: String): List<XPathStep> {
 
     // ─── 序列化辅助 ────────────────────────────────────────────
 
-    fun elementToHtml(el: Element): String = el.outerHtml()
-    fun elementToText(el: Element): String = el.text()
-    fun textNodeToString(tn: TextNode): String = tn.text().trim()
 }

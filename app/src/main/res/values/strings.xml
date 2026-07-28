@@ -18,7 +18,6 @@
     <string name="btn_clear">清空</string>
     <string name="btn_export">导出</string>
     <string name="btn_copy_rule">复制规则</string>
-    <string name="btn_share">分享</string>
     <string name="btn_paste_url">粘贴URL</string>
 
     <!-- 状态 -->
@@ -60,11 +59,6 @@
     <string name="settings_js_render">JavaScript渲染</string>
     <string name="settings_js_render_summary">用WebView渲染SPA页面后再提取</string>
     <string name="settings_js_delay">JS渲染等待时间(秒)</string>
-    <string name="settings_language">语言</string>
-    <string name="settings_language_zh">中文</string>
-    <string name="settings_language_en">English</string>
-    <string name="settings_save_history">保存历史记录</string>
-    <string name="settings_save_history_summary">自动保存抓取记录到本地</string>
 
     <!-- 批量抓取 -->
     <string name="batch_title">批量抓取</string>
@@ -86,24 +80,13 @@
     <string name="history_empty">暂无历史记录</string>
     <string name="history_clear">清空历史</string>
     <string name="history_clear_confirm">确定清空所有历史记录？</string>
-    <string name="history_favorite">收藏</string>
-    <string name="history_unfavorite">取消收藏</string>
-    <string name="history_favorites">收藏夹</string>
     <string name="history_all">全部记录</string>
     <string name="history_saved">已保存到历史</string>
-    <string name="history_pinned">已置顶收藏</string>
-    <string name="history_unpinned">已取消收藏</string>
     <string name="history_tab_recent">最近</string>
-    <string name="history_tab_fav">收藏</string>
 
     <!-- 预览 -->
     <string name="preview_webview">网页预览</string>
-    <string name="preview_image">图片预览</string>
     <string name="preview_html">HTML预览</string>
-    <string name="preview_images_title">图片画廊</string>
-    <string name="preview_save_image">保存到相册</string>
-    <string name="preview_image_saved">已保存到相册</string>
-    <string name="preview_no_images">未检测到图片</string>
 
     <!-- 表达式 -->
     <string name="expr_template_title">表达式模板</string>
@@ -114,46 +97,12 @@
     <string name="expr_validation_ok">表达式格式正确</string>
 
     <!-- 正则测试器 -->
-    <string name="regex_tester_title">正则表达式测试器</string>
-    <string name="regex_tester_pattern">正则表达式</string>
-    <string name="regex_tester_text">测试文本</string>
-    <string name="regex_tester_result">匹配结果</string>
-    <string name="regex_tester_matches">共 %d 处匹配</string>
-    <string name="regex_tester_no_match">无匹配结果</string>
-    <string name="regex_tester_error">正则错误: %s</string>
 
     <!-- 数据清洗 -->
-    <string name="filter_title">数据过滤</string>
-    <string name="filter_keyword">关键词过滤</string>
-    <string name="filter_include">仅保留包含</string>
-    <string name="filter_exclude">排除包含</string>
-    <string name="filter_dedup">去重</string>
-    <string name="filter_dedup_done">已去重,移除 %d 条重复</string>
-    <string name="filter_sort">排序</string>
-    <string name="filter_sort_alpha">按字母序</string>
-    <string name="filter_sort_length">按长度</string>
-    <string name="filter_sort_default">按原始顺序</string>
-    <string name="filter_apply">应用过滤</string>
-    <string name="filter_reset">重置</string>
 
     <!-- URL工具箱 -->
-    <string name="url_toolkit_title">URL工具箱</string>
-    <string name="url_toolkit_encode">URL编码</string>
-    <string name="url_toolkit_decode">URL解码</string>
-    <string name="url_toolkit_params">提取参数</string>
-    <string name="url_toolkit_abs">相对→绝对</string>
-    <string name="url_toolkit_input">输入URL</string>
-    <string name="url_toolkit_output">输出结果</string>
-    <string name="url_toolkit_copied">已复制</string>
 
     <!-- 统计 -->
-    <string name="stats_title">抓取统计</string>
-    <string name="stats_total">总结果数</string>
-    <string name="stats_unique">去重数</string>
-    <string name="stats_time">耗时</string>
-    <string name="stats_pages">抓取页数</string>
-    <string name="stats_success">成功页数</string>
-    <string name="stats_failed">失败页数</string>
 
     <!-- 多标签 -->
     <string name="tab_new">新建标签</string>
@@ -162,20 +111,12 @@
     <string name="tab_empty">新建标签页</string>
 
     <!-- 定时任务 -->
-    <string name="schedule_title">定时任务</string>
-    <string name="schedule_add">添加定时任务</string>
-    <string name="schedule_delete">删除任务</string>
-    <string name="schedule_interval">间隔(分钟)</string>
-    <string name="schedule_notification">新抓取到 %d 条结果</string>
-    <string name="schedule_empty">暂无定时任务</string>
-    <string name="schedule_running">运行中</string>
-    <string name="schedule_paused">已暂停</string>
 
     <!-- 关于 -->
     <string name="about_title">关于 Crawler Tool</string>
     <string name="about_message">Crawler Tool v1.3\n\n全能网页数据提取工具，支持 XPath/CSS选择器/正则表达式，内置HTML树形查看器、批量抓取、历史记录、Cookie管理、图片预览、JS渲染等20+功能。\n\nBy: SoloSu</string>
     <string name="about_changelog">更新日志</string>
-    <string name="about_changelog_content">v1.3 新特性:\n• 历史记录与收藏夹\n• 批量请求延迟\n• 一键分享功能\n• 剪贴板智能检测\n• 结果持久化\n• Cookie/Header 管理\n• 图片预览模式\n• 表达式输入增强\n• 正则表达式测试器\n• 数据清洗与过滤\n• JavaScript渲染支持\n• URL工具箱\n• 数据统计看板\n• 多标签页\n• 代理设置\n• 定时任务\n• 夜间模式WebView\n• 手势快捷操作\n• 深色启动图\n• 国际化支持</string>
+    <string name="about_changelog_content">v1.3 新特性:\n• 历史记录\n• 批量请求延迟\n• 一键分享功能\n• 剪贴板智能检测\n• 结果持久化\n• Cookie/Header 管理\n• 图片预览模式\n• 表达式输入增强\n• 正则表达式测试器\n• 数据清洗与过滤\n• JavaScript渲染支持\n• URL工具箱\n• 数据统计看板\n• 多标签页\n• 代理设置\n• 定时任务\n• 夜间模式WebView\n• 手势快捷操作\n• 深色启动图\n• 国际化支持</string>
 
     <!-- 菜单 -->
     <string name="menu_about">关于</string>
@@ -184,13 +125,7 @@
     <string name="menu_settings">设置</string>
     <string name="menu_export">导出</string>
     <string name="menu_history">历史记录</string>
-    <string name="menu_share">分享结果</string>
-    <string name="menu_url_toolkit">URL工具</string>
-    <string name="menu_regex_tester">正则测试器</string>
-    <string name="menu_filter">数据过滤</string>
-    <string name="menu_stats">统计信息</string>
     <string name="menu_new_tab">新建标签</string>
-    <string name="menu_schedule">定时任务</string>
 
     <!-- 错误 -->
     <string name="error_no_url">请输入有效的URL</string>
@@ -199,7 +134,6 @@
     <string name="error_clipboard_no_url">剪贴板中未检测到有效URL</string>
     <string name="error_proxy_format">代理格式错误</string>
     <string name="error_js_render">JS渲染失败,请检查网络或尝试普通模式</string>
-    <string name="error_schedule_permission">缺少通知权限</string>
 
     <!-- 通用 -->
     <string name="confirm">确定</string>

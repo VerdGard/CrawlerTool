@@ -1,4 +1,5 @@
 package com.SoloSu.Crawler_tool
+import com.SoloSu.Crawler_tool.repository.SettingsRepository
 
 import android.content.Context
 import okhttp3.MediaType.Companion.toMediaType
@@ -17,7 +18,6 @@ import java.util.concurrent.TimeUnit
  */
 object CrawlerEngine {
 
-    private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
 
     // 统计信息
     data class FetchStats(
@@ -44,8 +44,8 @@ object CrawlerEngine {
      */
     fun buildClient(context: Context): OkHttpClient {
         val builder = OkHttpClient.Builder()
-            .connectTimeout(SettingsActivity.getConnectTimeout(context), TimeUnit.SECONDS)
-            .readTimeout(SettingsActivity.getReadTimeout(context), TimeUnit.SECONDS)
+            .connectTimeout(SettingsRepository(context).getConnectTimeout(), TimeUnit.SECONDS)
+            .readTimeout(SettingsRepository(context).getReadTimeout(), TimeUnit.SECONDS)
             .followRedirects(true)
             .followSslRedirects(true)
             .addInterceptor { chain ->
@@ -53,7 +53,7 @@ object CrawlerEngine {
                 val reqBuilder = original.newBuilder()
 
                 // 自定义 User-Agent
-                val ua = SettingsActivity.getUserAgent(context)
+                val ua = SettingsRepository(context).getUserAgent()
                 reqBuilder.header("User-Agent",
                     if (ua.isNotBlank()) ua
                     else "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.6099.230 Mobile Safari/537.36"
@@ -71,7 +71,7 @@ object CrawlerEngine {
             }
 
         // 代理支持
-        val proxySettings = SettingsActivity.getProxySettings(context)
+        val proxySettings = SettingsRepository(context).getProxySettings()
         if (proxySettings != null) {
             builder.proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress(proxySettings.first, proxySettings.second)))
         }
@@ -184,11 +184,7 @@ object CrawlerEngine {
             return JsoupXPathEngine.evaluate(html, xpathExpr)
         } catch (e: Exception) {
             val msg = e.message ?: "未知错误"
-            throw when (e) {
-                is org.jsoup.UncheckedIOException ->
-                    RuntimeException("HTML解析失败,页面内容可能为空或格式异常:$msg", e)
-                else -> RuntimeException("XPath匹配失败:$msg\n\n请检查表达式格式,例如:\n• //a — 匹配所有a标签\n• //a/@href — 匹配所有链接的href属性\n• //div[@class='title'] — 匹配class为title的div", e)
-            }
+            throw RuntimeException("XPath匹配失败:$msg\n\n请检查表达式格式,例如:\n• //a — 匹配所有a标签\n• //a/@href — 匹配所有链接的href属性\n• //div[@class='title'] — 匹配class为title的div", e)
         }
     }
 
@@ -266,27 +262,6 @@ object CrawlerEngine {
         return sb.toString()
     }
 
-    // ─── 持久化 ────────────────────────────────────────────────
 
-    fun saveResults(context: Context, items: List<String>, fileName: String? = null): String {
-        val dir = java.io.File(context.cacheDir, "results")
-        if (!dir.exists()) dir.mkdirs()
-        val name = fileName ?: "results_${System.currentTimeMillis()}.json"
-        val file = java.io.File(dir, name)
-        file.writeText(exportResults(items, "json"))
-        return file.absolutePath
-    }
 
-    fun loadSavedResults(context: Context): List<java.io.File> {
-        val dir = java.io.File(context.cacheDir, "results")
-        if (!dir.exists()) return emptyList()
-        return dir.listFiles()?.sortedByDescending { it.lastModified() }?.take(50) ?: emptyList()
-    }
-
-    fun clearSavedResults(context: Context) {
-        val dir = java.io.File(context.cacheDir, "results")
-        if (dir.exists()) {
-            dir.listFiles()?.forEach { it.delete() }
-        }
-    }
 }

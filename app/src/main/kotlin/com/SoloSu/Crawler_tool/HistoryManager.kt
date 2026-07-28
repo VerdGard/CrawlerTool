@@ -13,7 +13,6 @@ object HistoryManager {
 
     private const val PREF_NAME = "crawler_history"
     private const val KEY_HISTORY = "history_items"
-    private const val KEY_FAVORITES = "favorite_items"
     private const val MAX_HISTORY = 100
 
     data class HistoryItem(
@@ -22,7 +21,6 @@ object HistoryManager {
         val expression: String,
         val mode: String,
         val timestamp: Long,
-        val isFavorite: Boolean = false,
         val resultCount: Int = 0
     )
 
@@ -44,7 +42,6 @@ object HistoryManager {
             expression = expression,
             mode = mode,
             timestamp = System.currentTimeMillis(),
-            isFavorite = false,
             resultCount = resultCount
         )
         items.add(0, item)
@@ -61,34 +58,11 @@ object HistoryManager {
         return loadItems(prefs, KEY_HISTORY)
     }
 
-    fun loadFavorites(context: Context): List<HistoryItem> {
-        return loadAll(context).filter { it.isFavorite }
-    }
-
-    // ─── 收藏切换 ──────────────────────────────────────────────
-
-    fun toggleFavorite(context: Context, itemId: Long): Boolean {
-        val prefs = getPrefs(context)
-        val items = loadAll(context).toMutableList()
-        val index = items.indexOfFirst { it.id == itemId }
-        if (index == -1) return false
-        val old = items[index]
-        items[index] = old.copy(isFavorite = !old.isFavorite)
-        saveItems(prefs, KEY_HISTORY, items)
-        return items[index].isFavorite
-    }
-
     // ─── 清空 ──────────────────────────────────────────────────
 
     fun clearAll(context: Context) {
         val prefs = getPrefs(context)
         prefs.edit().remove(KEY_HISTORY).apply()
-    }
-
-    fun clearFavorites(context: Context) {
-        val prefs = getPrefs(context)
-        val items = loadAll(context).filter { !it.isFavorite }
-        saveItems(prefs, KEY_HISTORY, items)
     }
 
     // ─── 序列化 ────────────────────────────────────────────────
@@ -102,7 +76,6 @@ object HistoryManager {
             obj.put("expression", item.expression)
             obj.put("mode", item.mode)
             obj.put("timestamp", item.timestamp)
-            obj.put("isFavorite", item.isFavorite)
             obj.put("resultCount", item.resultCount)
             arr.put(obj)
         }
@@ -121,7 +94,6 @@ object HistoryManager {
                 expression = obj.optString("expression", ""),
                 mode = obj.optString("mode", "XPath"),
                 timestamp = obj.optLong("timestamp", 0),
-                isFavorite = obj.optBoolean("isFavorite", false),
                 resultCount = obj.optInt("resultCount", 0)
             ))
         }

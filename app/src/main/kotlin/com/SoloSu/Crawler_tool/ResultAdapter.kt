@@ -8,6 +8,7 @@ import android.text.style.ForegroundColorSpan
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.ContextCompat
@@ -16,6 +17,8 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.card.MaterialCardView
 import com.google.android.material.button.MaterialButton
+import android.graphics.drawable.GradientDrawable
+import com.google.android.material.color.MaterialColors
 import java.lang.ref.WeakReference
 import java.util.regex.Pattern
 
@@ -54,6 +57,7 @@ class ResultAdapter(
         private val tvAttrTags: TextView = itemView.findViewById(R.id.tvAttrTags)
         private val btnExpand: TextView = itemView.findViewById(R.id.btnExpand)
         private val btnCopyItem: MaterialButton = itemView.findViewById(R.id.btnCopyItem)
+        private val indexBadge: FrameLayout = itemView.findViewById(R.id.indexBadge)
         private val cardItem: MaterialCardView = itemView.findViewById(R.id.cardItem)
 
         init {
@@ -62,6 +66,29 @@ class ResultAdapter(
             attrColor = ContextCompat.getColor(ctx, R.color.html_attr_color)
             valueColor = ContextCompat.getColor(ctx, R.color.html_value_color)
             textColor = ContextCompat.getColor(ctx, R.color.html_text_color)
+
+            // 设置主题配色的圆角背景
+            val bgColor = com.google.android.material.color.MaterialColors.getColor(ctx, androidx.appcompat.R.attr.colorPrimary, 0)
+            val gd = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+                setColor(bgColor)
+                cornerRadius = dp(13f)
+            }
+            indexBadge.background = gd
+
+            btnExpand.apply {
+                val bgColor = com.google.android.material.color.MaterialColors.getColor(ctx, com.google.android.material.R.attr.colorPrimaryContainer, 0)
+                val gd = android.graphics.drawable.GradientDrawable().apply {
+                    shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+                    setColor(bgColor)
+                    cornerRadius = dp(10f)
+                }
+                background = gd
+            }
+        }
+
+        private fun dp(value: Float): Float {
+            return value * itemView.context.resources.displayMetrics.density
         }
 
         fun bind(item: ResultItem) {

@@ -5,48 +5,51 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/bg_gradient"
+    android:background="?attr/colorSurface"
     tools:context="com.SoloSu.Crawler_tool.MainActivity">
 
     <com.google.android.material.appbar.AppBarLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:translationZ="4dp"
-        app:elevation="4dp">
+        app:elevation="2dp"
+        android:background="?attr/colorSurfaceContainerLow">
 
         <com.google.android.material.appbar.MaterialToolbar
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
-            android:background="@color/status_bar_color"
+            android:background="?attr/colorSurfaceContainerLow"
             app:title="Crawler Tool"
             app:titleTextAppearance="@style/TextAppearance.Material3.TitleLarge"
-            app:titleTextColor="@color/md_on_surface"
-            app:menu="@menu/toolbar_menu" />
+            app:titleTextColor="?attr/colorOnSurface"
+            />
 
     </com.google.android.material.appbar.AppBarLayout>
 
-    <LinearLayout
+    <androidx.core.widget.NestedScrollView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:orientation="vertical"
-        android:padding="12dp"
-        android:paddingTop="4dp"
-        android:clipToPadding="false"
+        android:scrollbars="none"
+        android:fillViewport="true"
         app:layout_behavior="@string/appbar_scrolling_view_behavior">
 
-        <!-- 输入卡片 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="12dp"
+        android:clipToPadding="false">
+
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="8dp"
-            android:clipToOutline="true"
-            app:cardElevation="3dp"
-            app:cardCornerRadius="12dp"
+            app:cardElevation="0dp"
+            app:cardCornerRadius="16dp"
             app:strokeWidth="1dp"
-            app:strokeColor="@color/card_stroke"
+            app:strokeColor="?attr/colorOutlineVariant"
             app:contentPadding="12dp"
-            app:cardBackgroundColor="@color/card_bg">
+            app:cardBackgroundColor="?attr/colorSurfaceContainerLow">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -61,51 +64,41 @@
                     android:layout_marginBottom="8dp"
                     app:singleSelection="true"
                     app:selectionRequired="true"
-                    app:chipSpacing="6dp">
+                    app:chipSpacing="6dp"
+                    app:checkedChip="@id/chipModeXPath">
 
                     <com.google.android.material.chip.Chip
                         android:id="@+id/chipModeXPath"
                         style="@style/Widget.Material3.Chip.Filter"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="@string/mode_xpath"
-                        android:checked="true"
-                        app:chipBackgroundColor="@color/chip_bg"
-                        app:chipStrokeWidth="1dp"
-                        app:chipStrokeColor="@color/chip_stroke" />
+                        android:text="@string/mode_xpath" />
 
                     <com.google.android.material.chip.Chip
                         android:id="@+id/chipModeCss"
                         style="@style/Widget.Material3.Chip.Filter"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="@string/mode_css"
-                        app:chipBackgroundColor="@color/chip_bg"
-                        app:chipStrokeWidth="1dp"
-                        app:chipStrokeColor="@color/chip_stroke" />
+                        android:text="@string/mode_css" />
 
                     <com.google.android.material.chip.Chip
                         android:id="@+id/chipModeRegex"
                         style="@style/Widget.Material3.Chip.Filter"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="@string/mode_regex"
-                        app:chipBackgroundColor="@color/chip_bg"
-                        app:chipStrokeWidth="1dp"
-                        app:chipStrokeColor="@color/chip_stroke" />
+                        android:text="@string/mode_regex" />
 
                 </com.google.android.material.chip.ChipGroup>
 
+                <!-- URL输入 -->
                 <com.google.android.material.textfield.TextInputLayout
                     android:id="@+id/urlInputLayout"
                     style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="8dp"
-                    app:hintEnabled="true"
-                    app:boxBackgroundColor="@color/input_bg"
-                    app:boxStrokeWidth="1.5dp"
-                    android:hint="@string/hint_url">
+                    android:hint="@string/hint_url"
+                    app:boxStrokeWidth="1.5dp">
 
                     <com.google.android.material.textfield.TextInputEditText
                         android:id="@+id/etUrl"
@@ -116,16 +109,15 @@
 
                 </com.google.android.material.textfield.TextInputLayout>
 
+                <!-- 表达式输入 -->
                 <com.google.android.material.textfield.TextInputLayout
                     android:id="@+id/exprInputLayout"
                     style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginBottom="6dp"
-                    app:hintEnabled="true"
-                    app:boxBackgroundColor="@color/input_bg"
-                    app:boxStrokeWidth="1.5dp"
-                    android:hint="@string/hint_xpath">
+                    android:hint="@string/hint_xpath"
+                    app:boxStrokeWidth="1.5dp">
 
                     <com.google.android.material.textfield.TextInputEditText
                         android:id="@+id/etExpression"
@@ -136,14 +128,14 @@
 
                 </com.google.android.material.textfield.TextInputLayout>
 
-                <!-- 快捷属性标签(仅 XPath 模式显示) -->
+                <!-- 快捷属性标签 -->
                 <TextView
                     android:id="@+id/tvQuickAttrs"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:text="@string/hint_quick_attrs"
                     android:textSize="12sp"
-                    android:textColor="@color/md_on_surface_variant"
+                    android:textColor="?attr/colorOnSurfaceVariant"
                     android:layout_marginBottom="4dp" />
 
                 <HorizontalScrollView
@@ -168,13 +160,13 @@
                             android:layout_height="wrap_content"
                             android:text="title"
                             android:textSize="11sp"
-                            android:textColor="@color/chip_text"
                             android:clickable="true"
                             android:focusable="true"
                             android:foreground="?attr/selectableItemBackground"
-                            app:chipBackgroundColor="@color/chip_bg"
+                            app:chipBackgroundColor="?attr/colorSurfaceVariant"
+                            app:chipStrokeColor="?attr/colorOutline"
                             app:chipStrokeWidth="1dp"
-                            app:chipStrokeColor="@color/chip_stroke"
+                            android:textColor="?attr/colorOnSurfaceVariant"
                             app:chipMinTouchTargetSize="28dp" />
 
                         <com.google.android.material.chip.Chip
@@ -184,13 +176,13 @@
                             android:layout_height="wrap_content"
                             android:text="href"
                             android:textSize="11sp"
-                            android:textColor="@color/chip_text"
                             android:clickable="true"
                             android:focusable="true"
                             android:foreground="?attr/selectableItemBackground"
-                            app:chipBackgroundColor="@color/chip_bg"
+                            app:chipBackgroundColor="?attr/colorSurfaceVariant"
+                            app:chipStrokeColor="?attr/colorOutline"
                             app:chipStrokeWidth="1dp"
-                            app:chipStrokeColor="@color/chip_stroke"
+                            android:textColor="?attr/colorOnSurfaceVariant"
                             app:chipMinTouchTargetSize="28dp" />
 
                         <com.google.android.material.chip.Chip
@@ -200,13 +192,13 @@
                             android:layout_height="wrap_content"
                             android:text="data-original"
                             android:textSize="11sp"
-                            android:textColor="@color/chip_text"
                             android:clickable="true"
                             android:focusable="true"
                             android:foreground="?attr/selectableItemBackground"
-                            app:chipBackgroundColor="@color/chip_bg"
+                            app:chipBackgroundColor="?attr/colorSurfaceVariant"
+                            app:chipStrokeColor="?attr/colorOutline"
                             app:chipStrokeWidth="1dp"
-                            app:chipStrokeColor="@color/chip_stroke"
+                            android:textColor="?attr/colorOnSurfaceVariant"
                             app:chipMinTouchTargetSize="28dp" />
 
                         <com.google.android.material.chip.Chip
@@ -216,13 +208,13 @@
                             android:layout_height="wrap_content"
                             android:text="data-src"
                             android:textSize="11sp"
-                            android:textColor="@color/chip_text"
                             android:clickable="true"
                             android:focusable="true"
                             android:foreground="?attr/selectableItemBackground"
-                            app:chipBackgroundColor="@color/chip_bg"
+                            app:chipBackgroundColor="?attr/colorSurfaceVariant"
+                            app:chipStrokeColor="?attr/colorOutline"
                             app:chipStrokeWidth="1dp"
-                            app:chipStrokeColor="@color/chip_stroke"
+                            android:textColor="?attr/colorOnSurfaceVariant"
                             app:chipMinTouchTargetSize="28dp" />
 
                         <com.google.android.material.chip.Chip
@@ -232,196 +224,175 @@
                             android:layout_height="wrap_content"
                             android:text="text()"
                             android:textSize="11sp"
-                            android:textColor="@color/chip_text"
                             android:clickable="true"
                             android:focusable="true"
                             android:foreground="?attr/selectableItemBackground"
-                            app:chipBackgroundColor="@color/chip_bg"
+                            app:chipBackgroundColor="?attr/colorSurfaceVariant"
+                            app:chipStrokeColor="?attr/colorOutline"
                             app:chipStrokeWidth="1dp"
-                            app:chipStrokeColor="@color/chip_stroke"
+                            android:textColor="?attr/colorOnSurfaceVariant"
                             app:chipMinTouchTargetSize="28dp" />
 
                     </com.google.android.material.chip.ChipGroup>
 
                 </HorizontalScrollView>
 
-                <!-- 批量抓取折叠区 -->
-                <LinearLayout
+                <!-- 批量抓取展开区 -->
+                <com.google.android.material.card.MaterialCardView
                     android:id="@+id/batchSection"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
                     android:visibility="gone"
                     android:layout_marginTop="4dp"
                     android:layout_marginBottom="6dp"
-                    android:padding="8dp"
-                    android:background="@color/input_bg"
-                    android:clipToOutline="true">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/batch_title"
-                        android:textSize="13sp"
-                        android:textColor="@color/md_primary"
-                        android:textStyle="bold"
-                        android:layout_marginBottom="6dp" />
+                    app:cardElevation="0dp"
+                    app:cardCornerRadius="12dp"
+                    app:strokeWidth="1dp"
+                    app:strokeColor="?attr/colorOutlineVariant"
+                    app:contentPadding="12dp"
+                    app:cardBackgroundColor="?attr/colorSurfaceContainerLow">
 
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:layout_marginBottom="6dp">
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/batch_title"
+                            android:textSize="13sp"
+                            android:textColor="?attr/colorPrimary"
+                            android:textStyle="bold"
+                            android:layout_marginBottom="8dp" />
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:layout_marginBottom="6dp">
+
+                            <com.google.android.material.textfield.TextInputLayout
+                                style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:layout_marginEnd="4dp"
+                                android:hint="@string/batch_start_page">
+
+                                <com.google.android.material.textfield.TextInputEditText
+                                    android:id="@+id/etBatchStart"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:inputType="number"
+                                    android:text="1" />
+                            </com.google.android.material.textfield.TextInputLayout>
+
+                            <com.google.android.material.textfield.TextInputLayout
+                                style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:layout_marginStart="4dp"
+                                android:hint="@string/batch_end_page">
+
+                                <com.google.android.material.textfield.TextInputEditText
+                                    android:id="@+id/etBatchEnd"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:inputType="number"
+                                    android:text="1" />
+                            </com.google.android.material.textfield.TextInputLayout>
+
+                        </LinearLayout>
 
                         <com.google.android.material.textfield.TextInputLayout
                             style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
-                            android:layout_width="0dp"
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:layout_marginEnd="4dp"
-                            android:hint="@string/batch_start_page"
-                            app:boxBackgroundColor="@color/input_bg">
+                            android:layout_marginBottom="6dp"
+                            android:hint="@string/batch_url_pattern">
 
                             <com.google.android.material.textfield.TextInputEditText
-                                android:id="@+id/etBatchStart"
+                                android:id="@+id/etBatchUrlPattern"
                                 android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
-                                android:inputType="number"
-                                android:text="1" />
+                                android:inputType="textUri"
+                                android:singleLine="true"
+                                android:textSize="12sp" />
                         </com.google.android.material.textfield.TextInputLayout>
 
-                        <com.google.android.material.textfield.TextInputLayout
-                            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:layout_marginStart="4dp"
-                            android:hint="@string/batch_end_page"
-                            app:boxBackgroundColor="@color/input_bg">
-
-                            <com.google.android.material.textfield.TextInputEditText
-                                android:id="@+id/etBatchEnd"
-                                android:layout_width="match_parent"
-                                android:layout_height="wrap_content"
-                                android:inputType="number"
-                                android:text="1" />
-                        </com.google.android.material.textfield.TextInputLayout>
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnBatchStart"
+                            android:layout_width="match_parent"
+                            android:layout_height="36dp"
+                            android:text="@string/batch_btn_start"
+                            android:textSize="12sp"
+                            android:minHeight="0dp"
+                            app:cornerRadius="18dp" />
 
                     </LinearLayout>
 
-                    <com.google.android.material.textfield.TextInputLayout
-                        style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginBottom="6dp"
-                        android:hint="@string/batch_url_pattern"
-                        app:boxBackgroundColor="@color/input_bg">
+                </com.google.android.material.card.MaterialCardView>
 
-                        <com.google.android.material.textfield.TextInputEditText
-                            android:id="@+id/etBatchUrlPattern"
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnBatchStart"
-                        android:layout_width="match_parent"
-                        android:layout_height="36dp"
-                        android:text="开始批量抓取"
-                        android:textSize="12sp"
-                        android:minHeight="0dp"
-                        app:cornerRadius="18dp"
-                        app:backgroundTint="@color/md_primary"
-                        android:textColor="@color/md_on_primary" />
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:inputType="textUri"
-                            android:singleLine="true"
-                            android:textSize="12sp" />
-                    </com.google.android.material.textfield.TextInputLayout>
-
-                </LinearLayout>
-
-                <!-- 操作按钮行 -->
-                <LinearLayout
+                <!-- 操作按钮行(可横向滑动) -->
+                <HorizontalScrollView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_horizontal"
-                    android:layout_marginTop="4dp">
+                    android:layout_marginTop="4dp"
+                    android:scrollbars="none">
 
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnMatch"
-                        android:layout_width="0dp"
-                        android:layout_height="44dp"
-                        android:layout_weight="1"
-                        android:layout_marginEnd="4dp"
-                        android:text="@string/btn_match"
-                        android:textSize="12sp"
-                        android:singleLine="true"
-                        android:includeFontPadding="false"
-                        app:cornerRadius="22dp"
-                        app:backgroundTint="@color/md_primary"
-                        android:textColor="@color/md_on_primary" />
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:gravity="center_vertical">
 
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnBatch"
-                        android:layout_width="0dp"
-                        android:layout_height="44dp"
-                        android:layout_weight="1"
-                        android:layout_marginStart="4dp"
-                        android:layout_marginEnd="4dp"
-                        android:text="批量"
-                        android:textSize="12sp"
-                        android:singleLine="true"
-                        android:includeFontPadding="false"
-                        app:cornerRadius="22dp"
-                        app:backgroundTint="@color/md_tertiary"
-                        android:textColor="@color/md_on_primary" />
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnMatch"
+                            android:layout_width="wrap_content"
+                            android:layout_height="44dp"
+                            android:layout_marginEnd="4dp"
+                            android:text="@string/btn_match"
+                            android:textSize="12sp"
+                            android:singleLine="true"
+                            android:includeFontPadding="false"
+                            app:cornerRadius="22dp" />
 
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnClear"
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnBatch"
+                            android:layout_width="wrap_content"
+                            android:layout_height="44dp"
+                            android:layout_marginEnd="4dp"
+                            android:text="批量"
+                            android:textSize="12sp"
+                            android:singleLine="true"
+                            android:includeFontPadding="false"
+                            app:cornerRadius="22dp" />
 
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnPasteUrl"
-                        android:layout_width="0dp"
-                        android:layout_height="44dp"
-                        android:layout_weight="1"
-                        android:layout_marginStart="4dp"
-                        android:layout_marginEnd="4dp"
-                        android:text="粘贴URL"
-                        android:textSize="12sp"
-                        android:singleLine="true"
-                        android:includeFontPadding="false"
-                        app:cornerRadius="22dp"
-                        app:backgroundTint="@color/md_primary_container"
-                        android:textColor="@color/md_on_primary_container" />
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnClear"
+                            android:layout_width="wrap_content"
+                            android:layout_height="44dp"
+                            android:layout_marginEnd="4dp"
+                            android:text="@string/btn_clear"
+                            android:textSize="12sp"
+                            android:singleLine="true"
+                            android:includeFontPadding="false"
+                            app:cornerRadius="22dp" />
 
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnShare"
-                        android:layout_width="0dp"
-                        android:layout_height="44dp"
-                        android:layout_weight="1"
-                        android:layout_marginStart="4dp"
-                        android:text="分享"
-                        android:textSize="12sp"
-                        android:singleLine="true"
-                        android:includeFontPadding="false"
-                        app:cornerRadius="22dp"
-                        app:backgroundTint="@color/md_secondary"
-                        android:textColor="@color/md_on_primary" />
-                        android:layout_width="0dp"
-                        android:layout_height="44dp"
-                        android:layout_weight="1"
-                        android:layout_marginStart="4dp"
-                        android:text="@string/btn_clear"
-                        android:textSize="12sp"
-                        android:singleLine="true"
-                        android:includeFontPadding="false"
-                        app:cornerRadius="22dp"
-                        app:backgroundTint="@color/md_error"
-                        android:textColor="@color/md_on_primary"
-                        app:iconGravity="textStart"
-                        app:iconSize="18dp" />
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/btnPasteUrl"
+                            android:layout_width="wrap_content"
+                            android:layout_height="44dp"
+                            android:text="@string/btn_paste_url"
+                            android:textSize="12sp"
+                            android:singleLine="true"
+                            android:includeFontPadding="false"
+                            app:cornerRadius="22dp" />
 
-                </LinearLayout>
+                    </LinearLayout>
+                </HorizontalScrollView>
 
             </LinearLayout>
 
@@ -434,13 +405,12 @@
             android:layout_height="0dp"
             android:layout_weight="1"
             android:layout_marginBottom="4dp"
-            android:clipToOutline="true"
-            app:cardElevation="3dp"
-            app:cardCornerRadius="12dp"
+            app:cardElevation="0dp"
+            app:cardCornerRadius="16dp"
             app:strokeWidth="1dp"
-            app:strokeColor="@color/card_stroke"
-            app:contentPadding="10dp"
-            app:cardBackgroundColor="@color/card_bg">
+            app:strokeColor="?attr/colorOutlineVariant"
+            app:contentPadding="12dp"
+            app:cardBackgroundColor="?attr/colorSurfaceContainerLow">
 
             <LinearLayout
                 android:layout_width="match_parent"
@@ -461,7 +431,7 @@
                         android:layout_weight="1"
                         android:text="匹配结果"
                         android:textSize="14sp"
-                        android:textColor="@color/md_on_surface"
+                        android:textColor="?attr/colorOnSurface"
                         android:textStyle="bold" />
 
                     <com.google.android.material.button.MaterialButton
@@ -473,16 +443,14 @@
                         android:minHeight="0dp"
                         android:paddingVertical="4dp"
                         android:paddingHorizontal="12dp"
-                        app:cornerRadius="16dp"
-                        app:backgroundTint="@color/md_primary_container"
-                        android:textColor="@color/md_on_primary_container" />
+                        app:cornerRadius="16dp" />
 
                 </LinearLayout>
 
                 <View
                     android:layout_width="match_parent"
                     android:layout_height="0.5dp"
-                    android:background="@color/divider_color"
+                    android:background="?attr/colorOutlineVariant"
                     android:layout_marginBottom="6dp" />
 
                 <androidx.recyclerview.widget.RecyclerView
@@ -493,9 +461,10 @@
                     android:clipToPadding="false"
                     android:padding="2dp"
                     android:overScrollMode="ifContentScrolls"
+                    android:nestedScrollingEnabled="false"
                     app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager" />
 
-                <!-- 分页控制 -->
+                <!-- 分页 -->
                 <LinearLayout
                     android:id="@+id/paginationBar"
                     android:layout_width="match_parent"
@@ -522,7 +491,7 @@
                         android:layout_height="wrap_content"
                         android:text="1/1"
                         android:textSize="12sp"
-                        android:textColor="@color/md_on_surface"
+                        android:textColor="?attr/colorOnSurface"
                         android:layout_marginHorizontal="12dp" />
 
                     <com.google.android.material.button.MaterialButton
@@ -548,10 +517,12 @@
             android:layout_height="wrap_content"
             android:text=""
             android:textSize="11sp"
-            android:textColor="@color/md_on_surface_variant"
+            android:textColor="?attr/colorOnSurfaceVariant"
             android:gravity="center"
             android:paddingVertical="4dp" />
 
     </LinearLayout>
+
+    </androidx.core.widget.NestedScrollView>
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>
