@@ -1,0 +1,48 @@
+姓名: 构建安装包
+
+在……之上:
+推:
+分支机构: [主要的]
+workflow_dispatch:
+
+工作:
+建立:
+连续的**提交**：$Ubuntu-最新
+    
+步骤:
+    - 姓名: 签出代码
+uses: 操作/结帐@v4 作/结帐@v4
+姓名
+    - 姓名: 设置JDK17
+uses: 操作/设置-Java@v4
+和……一起:
+java版: '17'
+分布: 'temurin'
+缓存: Gradleradle
+姓名
+    - 姓名: 授予gradlew的执行权限
+跑: chmod+x gradlewhmod+x gradlew
+姓名
+    - 姓名: 使用渐变生成
+跑: ./gradlew装配释放/gradlew装配释放
+姓名
+-姓名：将安装包上载到工件
+uses: 操作/上载工件@v4
+和……一起:
+姓名: release-apk
+路径: app/build/outputs/apk/release/*。apkpp/build/outputs/apk/release/*。安装包
+姓名
+-姓名: 创建发布
+uses: softprops/action-gh-release@v1
+如果: github.event_name=='推'&&github.ref=='参考/标头/主要'
+和……一起:
+文件: app/build/outputs/apk/release/*.apk
+tag_name: v${{github.run_number}}
+姓名: 卢阿福热工作室构建${{github.run_number}}
+身体: |
+**内部版本**：#${{github.run_number}}
+**提交**：${{github.event.head_commit.message}}
+**作者**：@${{github.event.head_commit.author.username}}
+生成发布注释: 正确
+env:
+GitHub_TOKEN: ${{secrets.GITHUB_TOKEN}}
