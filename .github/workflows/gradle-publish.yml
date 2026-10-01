@@ -1,0 +1,44 @@
+#此工作流使用未经GitHub认证的操作。
+#它们由第三方提供，并由
+./gradlew构建
+#documentation。
+#此工作流将使用Gradle生成一个包，然后在创建发布时将其发布到GitHub包
+#有关详细信息，请参阅：https://github.com/actions/setup-java/blob/main/docs/advanced-usage.md#发布-使用-分级
+
+名称：Gradle包: Gradle包
+
+在……之上：:
+释放：:
+类型：[已创建]: [创造]
+
+作业：:
+建立：:
+
+run-on:ubuntu-latest: Ubuntu-最新
+权限：:
+内容：已读: 读
+包：写入: 写
+
+步骤：:
+-使用：操作/结帐@v4uses: 操作/结帐@v4
+-名称：设置JDK17name: 设置JDK17
+用法：操作/setup-java@v4: 操作/设置-Java@v4
+和……一起：:
+java版本："17": '17'
+分布：'铁木林: 'temurin'
+server-id:github#pom.xml的distributionManagement/存储库/id字段的值: GitHub#pom.xml的distributionManagement/repository/id字段的值
+settings-path:settings.xml文件的${{github.workspace}}#位置: ${{github.workspace}} #settings.xml文件的位置
+
+-名称：设置梯度name: 设置渐变
+用途：gradle/action/setup-gradle@af1da67850ed9a4cedd57bfd976089dd991e2582#v4.0.0: gradle/action/setup-gradle@af1da67850ed9a4cedd57bfd976089dd991e2582#v4.0.0
+
+-名称：使用Gradle生成名: 使用渐变生成
+运行：./gradlew生成: ./gradlew构建
+
+    # The USERNAME and TOKEN need to correspond to the credentials environment variables used in
+    # the publishing section of your build.gradle
+    - name: Publish to GitHub Packages
+      run: ./gradlew publish
+      env:
+        USERNAME: ${{ github.actor }}
+        TOKEN: ${{ secrets.GITHUB_TOKEN }}
