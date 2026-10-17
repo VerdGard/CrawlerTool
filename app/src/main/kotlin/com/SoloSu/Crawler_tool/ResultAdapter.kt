@@ -158,9 +158,12 @@ class ResultAdapter(
             val tags = LinkedHashSet<String>()
             val matcher = ATTR_PATTERN.matcher(content)
             while (matcher.find() && tags.size < 6) tags.add("@${matcher.group(1)}")
-            if (tags.isEmpty()) {
-                content.contains("text()", true) || content.contains("text=\"", true)
-            }.let { if (it) tags.add("text()") }
+
+            // 表达式里含 text() 时补一个文本标记,与属性标签并列展示
+            val mentionsText = content.contains("text()", true) ||
+                content.contains("text=\"", true)
+            if (mentionsText) tags.add("text()")
+
             if (tags.isEmpty()) {
                 for (attr in COMMON_ATTRS) {
                     if (content.contains(attr, true)) {
