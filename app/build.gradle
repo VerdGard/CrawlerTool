@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.compose)
 }
 
 android {
@@ -9,7 +10,7 @@ android {
 
     defaultConfig {
         applicationId 'com.SoloSu.Crawler_tool'
-        minSdk 21
+        minSdk 30
         targetSdk 34
         versionCode 8
         versionName "1.5"
@@ -46,7 +47,10 @@ android {
     }
 
     buildFeatures {
-        viewBinding true
+        // 界面已全部迁移到 Compose,不再生成 ViewBinding
+        compose true
+        // 设置页「关于」需要读 versionName
+        buildConfig true
     }
 
     compileOptions {
@@ -64,25 +68,38 @@ android {
             excludes += ['/META-INF/{AL2.0,LGPL2.1}', 'META-INF/*.kotlin_module']
         }
     }
+
+    // Compose 相关类在 release 下没有 R8 会留下大量无用代码
+    lint {
+        checkDependencies true
+    }
 }
 
 dependencies {
     implementation libs.androidx.core.ktx
     implementation libs.androidx.appcompat
     implementation libs.material
-    implementation libs.androidx.constraintlayout
+
+    // Compose:版本由 BOM 统一裁定,各库不写 version
+    implementation platform(libs.androidx.compose.bom)
+    implementation libs.androidx.compose.ui
+    implementation libs.androidx.compose.ui.graphics
+    implementation libs.androidx.compose.foundation
+    implementation libs.androidx.compose.material3
+    implementation libs.androidx.compose.ui.tooling.preview
+    debugImplementation libs.androidx.compose.ui.tooling
+
+    implementation libs.androidx.activity.compose
+    implementation libs.lifecycle.viewmodel.compose
+    implementation libs.lifecycle.runtime.compose
 
     // Lifecycle + ViewModel
     implementation libs.lifecycle.viewmodel
-    implementation libs.lifecycle.runtime.compose
-    implementation libs.lifecycle.livedata.ktx
+    implementation libs.kotlinx.coroutines.android
 
     // Jsoup - HTML 解析 + XPath 匹配
     implementation libs.jsoup
 
     // OkHttp - 网络请求
     implementation libs.okhttp
-
-    // Coil - 图片加载
-    implementation libs.coil
 }

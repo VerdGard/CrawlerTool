@@ -3,28 +3,32 @@ package com.SoloSu.Crawler_tool.viewmodel
 import android.app.Application
 import android.content.ClipData
 import android.content.ClipboardManager
-import android.content.Context
 import android.content.ContentValues
-import android.os.Build
+import android.content.Context
 import android.os.Environment
 import android.provider.MediaStore
 import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.LiveData
-import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.viewModelScope
 import com.SoloSu.Crawler_tool.CrawlerEngine
 import com.SoloSu.Crawler_tool.HistoryManager
 import com.SoloSu.Crawler_tool.ResultItem
 import com.SoloSu.Crawler_tool.repository.CrawlerRepository
 import com.SoloSu.Crawler_tool.repository.HistoryRepository
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
 
 /**
- * 主界面 UI 状态。所有可变字段集中在此,Activity 只负责渲染。
+ * 主界面 UI 状态。
+ *
+ * 全部字段不可变,Compose 通过 [StateFlow] 订阅:
+ * 结构相等的数据不会触发重组,MutableLiveData 则每次 setValue 都会派发。
  */
 data class MainUiState(
     val url: String = "",
@@ -42,42 +46,64 @@ data class MainUiState(
     val isLoading: Boolean = false,
     /** 历史页数据,由 [MainViewModel.refreshHistory] 填充 */
     val history: List<HistoryManager.HistoryItem> = emptyList(),
+    /** 非空时弹出导出格式选择 */
+    val exportFormats: List<String>? = null,
+    /**
+     * 输入区的「外部改写」版本号。
+     *
+     * 输入框在 Compose 侧持有自己的本地状态(每次按键只重组输入框自身),
+     * 只有历史回填 / 重置这类外部改写才需要回写,靠这个计数触发一次同步,
+     * 避免把 url/expression 提升到顶层状态导致每敲一个字就重组整页。
+     */
+    val inputRevision: Int = 0,
 ) {
-    val hasResults: Boolean get() = results.isNotEmpty()
+    val hasResults: Boolean get() = allResults.isNotEmpty()
     /** 结果区为空且不处于加载中时,显示空状态引导 */
     val showEmptyState: Boolean get() = results.isEmpty() && !isLoading
 }
 
 sealed class MainEvent {
     data class Message(val text: String) : MainEvent()
-    data class ShowExportChooser(val formats: List<String>) : MainEvent()
+
+    /** 打开 HTML 结构树。对话框由宿主 Activity 弹出,状态里不留瞬时数据。 */
+    data class OpenStructure(val html: String) : MainEvent()
 }
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val crawlerRepo = CrawlerRepository(application)
     private val historyRepo = HistoryRepository(application)
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val pageSize = 20
 
-    private val _state = MutableLiveData(MainUiState())
-    val state: LiveData<MainUiState> = _state
+    private val _state = MutableStateFlow(MainUiState())
+    val state: StateFlow<MainUiState> = _state.asStateFlow()
 
-    private val _events = MutableLiveData<MainEvent>()
-    val events: LiveData<MainEvent> = _events
+    /** 一次性提示。Channel 保证只消费一次,不会在重组后重复弹出。 */
+    private val _events = Channel<MainEvent>(Channel.BUFFERED)
+    val events = _events.receiveAsFlow()
 
     // ─── 输入同步 ─────────────────────────────────────────────
 
     fun updateUrl(url: String) {
-        _state.value = _state.value?.copy(url = url)
+        _state.update { it.copy(url = url) }
     }
 
     fun updateExpression(expr: String) {
-        _state.value = _state.value?.copy(expression = expr)
+        _state.update { it.copy(expression = expr) }
+    }
+
+    /**
+     * 外部写入 URL(如从剪贴板粘贴)。
+     *
+     * 与 [updateUrl] 的区别在于递增 [MainUiState.inputRevision]:
+     * 抓取页的输入框持有本地状态,只有版本号变化才会从状态回写。
+     */
+    fun setUrlExternally(url: String) {
+        _state.update { it.copy(url = url, inputRevision = it.inputRevision + 1) }
     }
 
     fun updateMatchMode(mode: CrawlerEngine.MatchMode) {
-        _state.value = _state.value?.copy(matchMode = mode)
+        _state.update { it.copy(matchMode = mode) }
     }
 
     /** 从历史记录回填,同时重置结果区,避免旧结果与新表达式错配。 */
@@ -87,57 +113,64 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             "Regex" -> CrawlerEngine.MatchMode.Regex
             else -> CrawlerEngine.MatchMode.XPath
         }
-        _state.value = (_state.value ?: MainUiState()).copy(
-            url = item.url,
-            expression = item.expression,
-            matchMode = mode,
-        )
-        clearResults()
+        _state.update {
+            it.copy(
+                url = item.url,
+                expression = item.expression,
+                matchMode = mode,
+                inputRevision = it.inputRevision + 1,
+            ).clearedResults()
+        }
     }
 
     // ─── 匹配 ────────────────────────────────────────────────
 
     fun performMatch() {
-        val s = _state.value ?: return
+        val s = _state.value
         if (s.isLoading) return
 
         val url = s.url.trim()
         val expr = s.expression.trim()
         when {
-            url.isBlank() || !url.contains(".") ->
-                return emit("请输入有效的 URL")
-            expr.isBlank() ->
-                return emit("请输入匹配表达式")
+            url.isBlank() || !url.contains(".") -> return emit("请输入有效的 URL")
+            expr.isBlank() -> return emit("请输入匹配表达式")
         }
 
         val previousHtml = s.rawHtml
-        _state.value = s.copy(isLoading = true, statusText = "正在请求并匹配...")
+        _state.update { it.copy(isLoading = true, statusText = "正在请求并匹配...") }
 
-        scope.launch {
+        viewModelScope.launch {
             crawlerRepo.fetchAndMatch(url, expr, s.matchMode).fold(
                 onSuccess = { page ->
                     val results = page.matches
-                    _state.value = _state.value?.copy(
-                        // JS 渲染模式拿不到原始 HTML,此时保留上一次的快照
-                        rawHtml = page.html.ifBlank { previousHtml },
-                        allResults = results,
-                        isLoading = false,
-                        statusText = if (results.isEmpty()) "匹配完成,未找到结果"
-                        else "匹配完成,共 ${results.size} 条结果",
-                        currentPage = 0,
-                    )
-                    applyPage(0)
+                    _state.update {
+                        it.copy(
+                            // JS 渲染模式拿不到原始 HTML,此时保留上一次的快照
+                            rawHtml = page.html.ifBlank { previousHtml },
+                            allResults = results,
+                            isLoading = false,
+                            statusText = if (results.isEmpty()) "匹配完成,未找到结果"
+                            else "匹配完成,共 ${results.size} 条结果",
+                            currentPage = 0,
+                            results = sliceOf(results, 0),
+                            totalPages = pageCountOf(results),
+                        )
+                    }
                     if (results.isNotEmpty()) {
                         historyRepo.save(url, expr, s.matchMode.toString(), results.size)
+                        refreshHistory()
                     }
                 },
                 onFailure = { e ->
-                    _state.value = _state.value?.copy(
-                        isLoading = false,
-                        statusText = "匹配失败",
-                        results = emptyList(),
-                        totalPages = 0,
-                    )
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            statusText = "匹配失败",
+                            results = emptyList(),
+                            allResults = emptyList(),
+                            totalPages = 0,
+                        )
+                    }
                     emit("匹配失败:${e.message?.lineSequence()?.firstOrNull() ?: "未知错误"}")
                 }
             )
@@ -145,7 +178,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun performBatchMatch(urlPattern: String, startPage: Int, endPage: Int) {
-        val s = _state.value ?: return
+        val s = _state.value
         if (s.isLoading) return
         val expr = s.expression.trim()
         if (expr.isBlank()) return emit("请先输入匹配表达式")
@@ -154,38 +187,43 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         if (endPage < startPage) return emit("结束页不能小于起始页")
 
-        _state.value = s.copy(isLoading = true, statusText = "正在批量抓取...")
+        _state.update { it.copy(isLoading = true, statusText = "正在批量抓取...") }
 
-        scope.launch {
+        viewModelScope.launch {
             val result = crawlerRepo.fetchAndMatchBatch(
                 urlPattern, expr, s.matchMode, startPage, endPage
             ) { progress ->
                 val text = "正在抓取第 ${progress.page}/${progress.total} 页..."
-                if (_state.value?.statusText != text) {
-                    _state.value = _state.value?.copy(statusText = text)
-                }
+                _state.update { if (it.statusText == text) it else it.copy(statusText = text) }
             }
             result.fold(
                 onSuccess = { items ->
-                    _state.value = _state.value?.copy(
-                        rawHtml = "",
-                        allResults = items,
-                        isLoading = false,
-                        statusText = "批量抓取完成,共 ${items.size} 条结果",
-                        currentPage = 0,
-                    )
-                    applyPage(0)
+                    _state.update {
+                        it.copy(
+                            rawHtml = "",
+                            allResults = items,
+                            isLoading = false,
+                            statusText = "批量抓取完成,共 ${items.size} 条结果",
+                            currentPage = 0,
+                            results = sliceOf(items, 0),
+                            totalPages = pageCountOf(items),
+                        )
+                    }
                     if (items.isNotEmpty()) {
                         historyRepo.save(urlPattern, expr, s.matchMode.toString(), items.size)
+                        refreshHistory()
                     }
                 },
                 onFailure = { e ->
-                    _state.value = _state.value?.copy(
-                        isLoading = false,
-                        statusText = "批量抓取失败",
-                        results = emptyList(),
-                        totalPages = 0,
-                    )
+                    _state.update {
+                        it.copy(
+                            isLoading = false,
+                            statusText = "批量抓取失败",
+                            results = emptyList(),
+                            allResults = emptyList(),
+                            totalPages = 0,
+                        )
+                    }
                     emit("批量抓取失败:${e.message?.lineSequence()?.firstOrNull() ?: "未知错误"}")
                 }
             )
@@ -194,82 +232,78 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     /** 重置抓取页:清空输入与结果,但保留历史记录。 */
     fun resetInputs() {
-        _state.value = (_state.value ?: MainUiState()).copy(
-            url = "",
-            expression = "",
-            matchMode = CrawlerEngine.MatchMode.XPath,
-            allResults = emptyList(),
-            results = emptyList(),
-            currentPage = 0,
-            totalPages = 0,
-            rawHtml = "",
-            statusText = "",
-        )
+        _state.update {
+            it.copy(
+                url = "",
+                expression = "",
+                matchMode = CrawlerEngine.MatchMode.XPath,
+                inputRevision = it.inputRevision + 1,
+                rawHtml = "",
+            ).clearedResults()
+        }
     }
 
     fun clearResults() {
-        val s = _state.value ?: return
-        _state.value = s.copy(
-            allResults = emptyList(),
-            results = emptyList(),
-            currentPage = 0,
-            totalPages = 0,
-            statusText = "",
-        )
+        _state.update { it.clearedResults() }
     }
 
     // ─── 分页 ────────────────────────────────────────────────
 
     fun goToPage(page: Int) {
-        val s = _state.value ?: return
+        val s = _state.value
         if (page < 0 || page >= s.totalPages || page == s.currentPage) return
-        _state.value = s.copy(currentPage = page)
-        applyPage(page)
+        _state.update { it.copy(currentPage = page, results = sliceOf(it.allResults, page)) }
     }
 
-    fun nextPage() = goToPage((_state.value?.currentPage ?: 0) + 1)
+    fun nextPage() = goToPage(_state.value.currentPage + 1)
 
-    fun prevPage() = goToPage((_state.value?.currentPage ?: 0) - 1)
+    fun prevPage() = goToPage(_state.value.currentPage - 1)
 
-    /** 按页码把 allResults 切成一页,并同步 totalPages。 */
-    private fun applyPage(page: Int) {
-        val s = _state.value ?: return
-        if (s.allResults.isEmpty()) {
-            _state.value = s.copy(results = emptyList(), currentPage = 0, totalPages = 0)
-            return
-        }
-        val totalPages = (s.allResults.size + pageSize - 1) / pageSize
-        val safePage = page.coerceIn(0, totalPages - 1)
-        val start = safePage * pageSize
-        val end = minOf(start + pageSize, s.allResults.size)
-        val slice = s.allResults.subList(start, end).mapIndexed { i, content ->
+    private fun pageCountOf(all: List<String>): Int =
+        if (all.isEmpty()) 0 else (all.size + pageSize - 1) / pageSize
+
+    /** 把全量结果切成一页,并带上全局序号。 */
+    private fun sliceOf(all: List<String>, page: Int): List<ResultItem> {
+        if (all.isEmpty()) return emptyList()
+        val total = pageCountOf(all)
+        val safe = page.coerceIn(0, total - 1)
+        val start = safe * pageSize
+        val end = minOf(start + pageSize, all.size)
+        return all.subList(start, end).mapIndexed { i, content ->
             ResultItem(start + i + 1, content)
         }
-        _state.value = s.copy(
-            results = slice,
-            currentPage = safePage,
-            totalPages = totalPages,
-        )
     }
+
+    private fun MainUiState.clearedResults(): MainUiState = copy(
+        allResults = emptyList(),
+        results = emptyList(),
+        currentPage = 0,
+        totalPages = 0,
+        statusText = "",
+    )
 
     // ─── 复制 / 历史 ──────────────────────────────────────────
 
     fun copyExpression() {
-        val expr = _state.value?.expression.orEmpty()
+        val expr = _state.value.expression
         if (expr.isBlank()) return emit("表达式为空")
         copyToClipboard(expr)
         emit("已复制规则表达式")
     }
 
     fun copyAllResults() {
-        val all = _state.value?.allResults.orEmpty()
+        val all = _state.value.allResults
         if (all.isEmpty()) return emit("没有可复制的结果")
         copyToClipboard(all.joinToString("\n"))
         emit("已复制 ${all.size} 条结果")
     }
 
+    fun copyOneResult(item: ResultItem) {
+        copyToClipboard(item.content)
+        emit("已复制第 ${item.index} 条")
+    }
+
     private fun copyToClipboard(text: String) {
-        // minSdk 21:不能使用 getSystemService(Class),改用字符串方式获取
         val manager = getApplication<Application>()
             .getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
         manager?.setPrimaryClip(ClipData.newPlainText("Crawler Tool", text))
@@ -278,7 +312,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /** 历史页是常驻页面,直接刷进状态而不是走一次性事件。 */
     fun refreshHistory() {
         val items = historyRepo.loadHistory()
-        _state.value = (_state.value ?: MainUiState()).copy(history = items)
+        _state.update { it.copy(history = items) }
     }
 
     fun deleteHistoryItem(item: HistoryManager.HistoryItem) {
@@ -291,16 +325,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         refreshHistory()
     }
 
-    // ─── 导出 ────────────────────────────────────────────────
+    // ─── 结构树 / 导出对话框 ─────────────────────────────────
 
-    fun requestExport() {
-        if (_state.value?.allResults.isNullOrEmpty()) return emit("没有可导出的结果")
-        _events.value = MainEvent.ShowExportChooser(listOf("JSON", "CSV", "纯文本"))
+    fun showStructure(html: String? = null) {
+        val target = html?.takeIf { it.isNotBlank() } ?: _state.value.rawHtml
+        if (target.isBlank()) return emit("当前没有可查看的 HTML")
+        _events.trySend(MainEvent.OpenStructure(target))
     }
 
-    /** 导出到外部存储;Android 10+ 走 MediaStore,无需写权限。 */
+    fun requestExport() {
+        if (_state.value.allResults.isEmpty()) return emit("没有可导出的结果")
+        _state.update { it.copy(exportFormats = listOf("JSON", "CSV", "纯文本")) }
+    }
+
+    fun dismissExport() {
+        _state.update { it.copy(exportFormats = null) }
+    }
+
+    /** 导出到 Downloads;Crawler-Tool 子目录,Android 10+ 走 MediaStore,无需写权限。 */
     fun exportResults(format: String) {
-        val items = _state.value?.allResults.orEmpty()
+        val items = _state.value.allResults
+        _state.update { it.copy(exportFormats = null) }
         if (items.isEmpty()) return emit("没有可导出的结果")
 
         val key = when (format) {
@@ -309,7 +354,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             else -> "text"
         }
 
-        scope.launch {
+        viewModelScope.launch {
             val outcome = withContext(Dispatchers.IO) {
                 runCatching {
                     val content = crawlerRepo.exportResults(items, key)
@@ -334,33 +379,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    @Suppress("DEPRECATION")
     private fun writeExport(content: String, fileName: String, mime: String): String {
         val app = getApplication<Application>()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val values = ContentValues().apply {
-                put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-                put(MediaStore.MediaColumns.MIME_TYPE, mime)
-                put(MediaStore.MediaColumns.RELATIVE_PATH, "${Environment.DIRECTORY_DOWNLOADS}/Crawler-Tool")
-            }
-            val resolver = app.contentResolver
-            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-                ?: throw IllegalStateException("无法创建文件")
-            resolver.openOutputStream(uri)?.use { it.write(content.toByteArray()) }
-                ?: throw IllegalStateException("无法写入文件")
-            return "Downloads/Crawler-Tool/$fileName"
+        val values = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+            put(MediaStore.MediaColumns.MIME_TYPE, mime)
+            put(
+                MediaStore.MediaColumns.RELATIVE_PATH,
+                "${Environment.DIRECTORY_DOWNLOADS}/Crawler-Tool"
+            )
         }
-
-        val dir = File(Environment.getExternalStoragePublicDirectory(
-            Environment.DIRECTORY_DOWNLOADS
-        ), "Crawler-Tool")
-        if (!dir.exists() && !dir.mkdirs()) throw IllegalStateException("无法创建目录 ${dir.path}")
-        val file = File(dir, fileName)
-        file.writeText(content)
-        return file.absolutePath
+        val resolver = app.contentResolver
+        val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+            ?: throw IllegalStateException("无法创建文件")
+        resolver.openOutputStream(uri)?.use { it.write(content.toByteArray()) }
+            ?: throw IllegalStateException("无法写入文件")
+        return "Downloads/Crawler-Tool/$fileName"
     }
 
     private fun emit(text: String) {
-        _events.value = MainEvent.Message(text)
+        _events.trySend(MainEvent.Message(text))
     }
 }
