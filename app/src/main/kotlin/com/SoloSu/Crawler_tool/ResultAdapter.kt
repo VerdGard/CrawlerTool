@@ -3,7 +3,6 @@ package com.SoloSu.Crawler_tool
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
-import android.graphics.drawable.GradientDrawable
 import android.text.SpannableStringBuilder
 import android.text.style.ForegroundColorSpan
 import android.view.LayoutInflater
@@ -17,7 +16,6 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.card.MaterialCardView
-import com.google.android.material.color.MaterialColors
 import java.lang.ref.WeakReference
 import java.util.regex.Pattern
 
@@ -86,11 +84,8 @@ class ResultAdapter(
         private val btnCopyItem: MaterialButton = itemView.findViewById(R.id.btnCopyItem)
 
         init {
-            // 序号徽标:主色容器圆角底
-            val badgeColor = MaterialColors.getColor(
-                ctx, com.google.android.material.R.attr.colorPrimaryContainer, 0
-            )
-            tvIndex.background = rounded(badgeColor, 8f)
+            // 序号徽标的底色与圆角由 item_result 的 bg_index_pill 提供,
+            // 这里不再用 GradientDrawable 覆盖,否则会绕过主题、无法跟随莫奈取色。
 
             cardItem.setOnLongClickListener {
                 onLongClickItem?.invoke(
@@ -99,13 +94,6 @@ class ResultAdapter(
                 true
             }
         }
-
-        private fun rounded(color: Int, radiusDp: Float): GradientDrawable =
-            GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                setColor(color)
-                cornerRadius = radiusDp * ctx.resources.displayMetrics.density
-            }
 
         fun bind(item: ResultItem) {
             tvIndex.text = item.index.toString()

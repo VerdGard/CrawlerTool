@@ -1,90 +1,70 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!--
-      EdgeGesture 风格配色方案 (GitHub-inspired)
-      浅色: GitHub Light (bg:#F6F8FA, card:#FFFFFF, border:#D0D7DE)
-      深色: GitHub Dark  (bg:#0D1117, card:#161B22, border:#30363D)
-      主色: Indigo (#3F51B5 / #B1B8DF)
+      Material 3 基线配色(浅色)。
+      开启「莫奈取色」后,整套角色由 DynamicColors 用系统壁纸取色覆盖,
+      因此这里只负责兜底:未开启取色、或系统低于 Android 12 时使用。
+
+      命名沿用 md_* 前缀,日/夜两份文件同名同结构,
+      由资源限定符自动切换,主题里不再区分 _dark 后缀。
     -->
 
-    <!-- === Light Color Roles === -->
-    <color name="md_primary">#3F51B5</color>
+    <!-- Primary -->
+    <color name="md_primary">#6750A4</color>
     <color name="md_on_primary">#FFFFFF</color>
-    <color name="md_primary_container">#E8EAF6</color>
-    <color name="md_on_primary_container">#1A237E</color>
+    <color name="md_primary_container">#EADDFF</color>
+    <color name="md_on_primary_container">#21005D</color>
 
-    <color name="md_secondary">#656D76</color>
+    <!-- Secondary -->
+    <color name="md_secondary">#625B71</color>
     <color name="md_on_secondary">#FFFFFF</color>
-    <color name="md_secondary_container">#E0E0E0</color>
-    <color name="md_on_secondary_container">#1A1A1A</color>
+    <color name="md_secondary_container">#E8DEF8</color>
+    <color name="md_on_secondary_container">#1D192B</color>
 
-    <color name="md_tertiary">#8250DF</color>
+    <!-- Tertiary -->
+    <color name="md_tertiary">#7D5260</color>
     <color name="md_on_tertiary">#FFFFFF</color>
-    <color name="md_tertiary_container">#F3E8FF</color>
-    <color name="md_on_tertiary_container">#3B1E6E</color>
+    <color name="md_tertiary_container">#FFD8E4</color>
+    <color name="md_on_tertiary_container">#31111D</color>
 
-    <color name="md_background">#F6F8FA</color>
-    <color name="md_on_background">#24292F</color>
-    <color name="md_surface">#FFFFFF</color>
-    <color name="md_on_surface">#1F2328</color>
-    <color name="md_surface_variant">#F3F4F6</color>
-    <color name="md_on_surface_variant">#656D76</color>
-
-    <color name="md_outline">#D0D7DE</color>
-    <color name="md_outline_variant">#D0D7DE</color>
-
-    <color name="md_error">#CF222E</color>
+    <!-- Error -->
+    <color name="md_error">#B3261E</color>
     <color name="md_on_error">#FFFFFF</color>
     <color name="md_error_container">#F9DEDC</color>
     <color name="md_on_error_container">#410E0B</color>
 
-    <!-- === Dark Color Roles === -->
-    <color name="md_primary_dark">#B1B8DF</color>
-    <color name="md_on_primary_dark">#1A237E</color>
-    <color name="md_primary_container_dark">#3F51B5</color>
-    <color name="md_on_primary_container_dark">#E8EAF6</color>
+    <!-- Background / Surface -->
+    <color name="md_background">#FEF7FF</color>
+    <color name="md_on_background">#1D1B20</color>
+    <color name="md_surface">#FEF7FF</color>
+    <color name="md_on_surface">#1D1B20</color>
+    <color name="md_surface_variant">#E7E0EC</color>
+    <color name="md_on_surface_variant">#49454F</color>
+    <color name="md_surface_tint">#6750A4</color>
 
-    <color name="md_secondary_dark">#8B949E</color>
-    <color name="md_on_secondary_dark">#1A1A1A</color>
-    <color name="md_secondary_container_dark">#5C5C5C</color>
-    <color name="md_on_secondary_container_dark">#E0E0E0</color>
+    <!-- Surface 容器层级(M3 elevation 语义) -->
+    <color name="md_surface_container_lowest">#FFFFFF</color>
+    <color name="md_surface_container_low">#F7F2FA</color>
+    <color name="md_surface_container">#F3EDF7</color>
+    <color name="md_surface_container_high">#ECE6F0</color>
+    <color name="md_surface_container_highest">#E6E0E9</color>
 
-    <color name="md_tertiary_dark">#A371F7</color>
-    <color name="md_on_tertiary_dark">#FFFFFF</color>
-    <color name="md_tertiary_container_dark">#5C3B8C</color>
-    <color name="md_on_tertiary_container_dark">#F3E8FF</color>
+    <!-- Outline -->
+    <color name="md_outline">#79747E</color>
+    <color name="md_outline_variant">#CAC4D0</color>
 
-    <color name="md_background_dark">#0D1117</color>
-    <color name="md_on_background_dark">#C9D1D9</color>
-    <color name="md_surface_dark">#161B22</color>
-    <color name="md_on_surface_dark">#F0F6FC</color>
-    <color name="md_surface_variant_dark">#21262D</color>
-    <color name="md_on_surface_variant_dark">#8B949E</color>
+    <!-- 反色 / 遮罩 -->
+    <color name="md_inverse_surface">#322F35</color>
+    <color name="md_inverse_on_surface">#F5EFF7</color>
+    <color name="md_inverse_primary">#D0BCFF</color>
+    <color name="md_scrim">#000000</color>
 
-    <color name="md_outline_dark">#30363D</color>
-    <color name="md_outline_variant_dark">#21262D</color>
+    <!-- HTML 语法高亮(随日/夜切换) -->
+    <color name="html_tag_color">#6A4BA8</color>
+    <color name="html_attr_color">#B3261E</color>
+    <color name="html_value_color">#2E6B48</color>
+    <color name="html_text_color">#1D1B20</color>
 
-    <color name="md_error_dark">#F85149</color>
-    <color name="md_on_error_dark">#FFFFFF</color>
-    <color name="md_error_container_dark">#8C1D18</color>
-    <color name="md_on_error_container_dark">#F9DEDC</color>
-
-    <!-- === HTML Syntax Highlighting (保持不变) === -->
-    <color name="html_tag_color">#1565C0</color>
-    <color name="html_attr_color">#C62828</color>
-    <color name="html_value_color">#2E7D32</color>
-    <color name="html_text_color">#212121</color>
-
-    <!-- === Layout Colors (GitHub 风格适配) === -->
-    <color name="chip_bg">#E8EAF6</color>
-    <color name="chip_stroke">#D0D7DE</color>
-    <color name="chip_text">#3F51B5</color>
-    <color name="input_bg">#F6F8FA</color>
-    <color name="card_bg">#FFFFFF</color>
-    <color name="card_stroke">#D0D7DE</color>
-    <color name="divider_color">#D0D7DE</color>
-    <color name="index_badge_text">#FFFFFF</color>
-    <color name="status_bar_color">#3F51B5</color>
-    <color name="expand_btn_bg">#E8EAF6</color>
-    <color name="index_badge_bg">#3F51B5</color>
+    <!-- 兼容既有引用 -->
+    <color name="expand_btn_bg">#EADDFF</color>
 </resources>

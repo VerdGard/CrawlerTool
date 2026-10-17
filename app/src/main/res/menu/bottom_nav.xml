@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <item
+        android:id="@+id/navFetch"
+        android:icon="@drawable/ic_nav_fetch"
+        android:title="@string/nav_fetch" />
+
+    <item
+        android:id="@+id/navResults"
+        android:icon="@drawable/ic_nav_results"
+        android:title="@string/nav_results" />
+
+    <item
+        android:id="@+id/navHistory"
+        android:icon="@drawable/ic_nav_history"
+        android:title="@string/nav_history" />
+
+    <item
+        android:id="@+id/navSettings"
+        android:icon="@drawable/ic_nav_settings"
+        android:title="@string/nav_settings" />
+
+</menu>

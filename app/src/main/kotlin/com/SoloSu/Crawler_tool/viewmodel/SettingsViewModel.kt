@@ -20,6 +20,7 @@ data class SettingsUiState(
     val jsRenderEnabled: Boolean = false,
     val jsRenderDelay: Int = 3,
     val headerCount: Int = 0,
+    val monetEnabled: Boolean = true,
 )
 
 class SettingsViewModel(application: Application) : AndroidViewModel(application) {
@@ -47,6 +48,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
             jsRenderEnabled = settingsRepo.isJsRenderEnabled(),
             jsRenderDelay = settingsRepo.getJsRenderDelay(),
             headerCount = settingsRepo.getCustomHeaderCount(),
+            monetEnabled = settingsRepo.isMonetEnabled(),
         )
     }
 
@@ -61,6 +63,7 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     fun updateProxyPort(port: Int) { settingsRepo.setProxyPort(port); _state.value = _state.value?.copy(proxyPort = port) }
     fun updateJsRenderEnabled(enabled: Boolean) { settingsRepo.setJsRenderEnabled(enabled); _state.value = _state.value?.copy(jsRenderEnabled = enabled) }
     fun updateJsRenderDelay(seconds: Int) { settingsRepo.setJsRenderDelay(seconds); _state.value = _state.value?.copy(jsRenderDelay = seconds) }
+    fun updateMonetEnabled(enabled: Boolean) { settingsRepo.setMonetEnabled(enabled); _state.value = _state.value?.copy(monetEnabled = enabled) }
     fun refreshHeaderCount() { _state.value = _state.value?.copy(headerCount = settingsRepo.getCustomHeaderCount()) }
 
     fun getHeaders(): List<HeaderManager.HeaderEntry> = settingsRepo.getCustomHeaders()

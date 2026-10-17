@@ -22,6 +22,7 @@ class SettingsRepository(private val context: Context) {
         const val KEY_PROXY_PORT = "proxy_port"
         const val KEY_JS_RENDER = "js_render"
         const val KEY_JS_DELAY = "js_delay"
+        const val KEY_MONET = "monet_enabled"
 
         const val THEME_SYSTEM = "system"
         const val THEME_LIGHT = "light"
@@ -67,6 +68,10 @@ class SettingsRepository(private val context: Context) {
     fun setJsRenderEnabled(enabled: Boolean) = prefs.edit().putBoolean(KEY_JS_RENDER, enabled).apply()
     fun getJsRenderDelay(): Int = prefs.getInt(KEY_JS_DELAY, 3)
     fun setJsRenderDelay(seconds: Int) = prefs.edit().putInt(KEY_JS_DELAY, seconds).apply()
+
+    // 莫奈取色(Material You 动态取色)
+    fun isMonetEnabled(): Boolean = prefs.getBoolean(KEY_MONET, true)
+    fun setMonetEnabled(enabled: Boolean) = prefs.edit().putBoolean(KEY_MONET, enabled).apply()
 
     // Language
 

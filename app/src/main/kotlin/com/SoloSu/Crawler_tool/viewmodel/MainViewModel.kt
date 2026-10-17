@@ -40,6 +40,8 @@ data class MainUiState(
     val rawHtml: String = "",
     val statusText: String = "",
     val isLoading: Boolean = false,
+    /** 历史页数据,由 [MainViewModel.refreshHistory] 填充 */
+    val history: List<HistoryManager.HistoryItem> = emptyList(),
 ) {
     val hasResults: Boolean get() = results.isNotEmpty()
     /** 结果区为空且不处于加载中时,显示空状态引导 */
@@ -48,7 +50,6 @@ data class MainUiState(
 
 sealed class MainEvent {
     data class Message(val text: String) : MainEvent()
-    data class ShowHistory(val items: List<HistoryManager.HistoryItem>) : MainEvent()
     data class ShowExportChooser(val formats: List<String>) : MainEvent()
 }
 
@@ -191,6 +192,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** 重置抓取页:清空输入与结果,但保留历史记录。 */
+    fun resetInputs() {
+        _state.value = (_state.value ?: MainUiState()).copy(
+            url = "",
+            expression = "",
+            matchMode = CrawlerEngine.MatchMode.XPath,
+            allResults = emptyList(),
+            results = emptyList(),
+            currentPage = 0,
+            totalPages = 0,
+            rawHtml = "",
+            statusText = "",
+        )
+    }
+
     fun clearResults() {
         val s = _state.value ?: return
         _state.value = s.copy(
@@ -259,18 +275,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         manager?.setPrimaryClip(ClipData.newPlainText("Crawler Tool", text))
     }
 
-    fun showHistory() {
+    /** 历史页是常驻页面,直接刷进状态而不是走一次性事件。 */
+    fun refreshHistory() {
         val items = historyRepo.loadHistory()
-        if (items.isEmpty()) return emit("暂无历史记录")
-        _events.value = MainEvent.ShowHistory(items)
+        _state.value = (_state.value ?: MainUiState()).copy(history = items)
     }
 
     fun deleteHistoryItem(item: HistoryManager.HistoryItem) {
         historyRepo.delete(item.id)
+        refreshHistory()
     }
 
     fun clearHistory() {
         historyRepo.clearAll()
+        refreshHistory()
     }
 
     // ─── 导出 ────────────────────────────────────────────────

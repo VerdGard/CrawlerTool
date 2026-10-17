@@ -183,4 +183,46 @@
     <!-- 状态补充 -->
     <string name="status_loading_html">正在获取页面...</string>
     <string name="status_no_html">尚无页面快照,请先执行匹配</string>
+
+    <!-- 底部导航 -->
+    <string name="nav_fetch">抓取</string>
+    <string name="nav_results">结果</string>
+    <string name="nav_history">历史</string>
+    <string name="nav_settings">设置</string>
+
+    <!-- 抓取页 -->
+    <string name="fetch_title">抓取</string>
+    <string name="fetch_subtitle">填入网址与表达式,一次拿到结构化结果</string>
+    <string name="fetch_section_target">目标</string>
+    <string name="fetch_section_expr">匹配表达式</string>
+    <string name="fetch_section_quick">快捷插入</string>
+    <string name="fetch_btn_batch">批量</string>
+    <string name="fetch_btn_copy_rule">复制规则</string>
+    <string name="fetch_btn_reset">重置</string>
+    <string name="fetch_idle_hint">尚未开始抓取</string>
+
+    <!-- 结果页 -->
+    <string name="results_title">结果</string>
+    <string name="results_subtitle">长按单条可查看结构树</string>
+    <string name="results_btn_export">导出</string>
+    <string name="results_action_copy_all">复制全部</string>
+    <string name="results_action_clear">清空</string>
+    <string name="results_empty_title">还没有结果</string>
+    <string name="results_empty_hint">到「抓取」页输入网址与表达式</string>
+
+    <!-- 历史页 -->
+    <string name="history_subtitle">点击任意一条即可回填到抓取页</string>
+    <string name="history_empty_title">暂无历史记录</string>
+    <string name="history_empty_hint">每次成功抓取后会自动记录</string>
+
+    <!-- 设置页 -->
+    <string name="settings_appearance">外观</string>
+    <string name="settings_monet">莫奈取色</string>
+    <string name="settings_monet_summary">从壁纸提取配色(需 Android 12 及以上)</string>
+    <string name="settings_monet_unavailable">当前系统不支持壁纸取色</string>
+    <string name="settings_network">网络</string>
+    <string name="settings_capture">抓取</string>
+    <string name="settings_other">其它</string>
+    <string name="settings_about_summary">版本信息与开源说明</string>
+    <string name="settings_version">版本</string>
 </resources>
