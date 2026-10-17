@@ -55,6 +55,11 @@ captures/
 debug.keystore
 release.keystore
 
+# 例外:应用 release 签名证书需随仓库分发(CI 与本地共用同一 key)。
+# 该文件泄露仅意味着他人可伪造本应用签名,不影响其它应用;如需更换请同步修改
+# gradle.properties 中的 crawler.* 四项。
+!keystore/crawler-release.jks
+
 # ============================================
 # 备份文件
 # ============================================

@@ -134,6 +134,39 @@ object CrawlerEngine {
     }
 
     /**
+     * 抓取页面并同时返回「HTML + 匹配结果」,
+     * 避免调用方为了拿到 DOM 而对同一 URL 二次请求。
+     *
+     * @param delayMs 请求前延迟,用于批量抓取节流
+     */
+    fun fetchHtmlAndMatch(
+        context: Context,
+        url: String,
+        expression: String,
+        mode: MatchMode,
+        delayMs: Long = 0,
+        stats: FetchStats? = null
+    ): Result<Pair<String, List<String>>> {
+        return runCatching {
+            stats?.let {
+                it.totalRequests++
+                if (it.startTime == 0L) it.startTime = System.currentTimeMillis()
+            }
+            if (delayMs > 0) Thread.sleep(delayMs)
+
+            val html = doGet(context, url)
+            val results = matchWithMode(html, expression, mode)
+            stats?.let {
+                it.successRequests++
+                it.totalResults += results.size
+            }
+            html to results
+        }.onFailure {
+            stats?.let { it.failedRequests++ }
+        }
+    }
+
+    /**
      * 仅匹配（不重新请求）
      */
     fun matchOnly(

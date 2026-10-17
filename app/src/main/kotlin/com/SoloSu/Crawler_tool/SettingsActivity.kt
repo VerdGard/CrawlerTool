@@ -287,17 +287,23 @@ class SettingsActivity : BaseActivity() {
         binding.jsDelayLayout.visibility = if (enabled) View.VISIBLE else View.GONE
     }
 
-    private fun formatDelay(ms: Long): String = when (ms) {
-        0L -> "无延迟"
-        500L -> "0.5秒"
-        1000L -> "1秒"
-        2000L -> "2秒"
-        5000L -> "5秒"
-        else -> "${ms}ms"
-    }
+    private fun formatDelay(ms: Long): String = formatDelayLabel(ms)
 
     override fun onDestroy() {
         super.onDestroy()
         _binding = null
     }
+
+    companion object {
+        /** 请求间隔的展示文案,主界面批量面板复用同一份映射。 */
+        fun formatDelayLabel(ms: Long): String = when (ms) {
+            0L -> "无延迟"
+            500L -> "0.5秒"
+            1000L -> "1秒"
+            2000L -> "2秒"
+            5000L -> "5秒"
+            else -> "${ms}ms"
+        }
+    }
 }
+

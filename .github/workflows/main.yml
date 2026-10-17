@@ -1,48 +1,67 @@
-姓名: 构建安装包
+name: Build & Release
 
-在……之上:
-推:
-分支机构: [主要的]
-workflow_dispatch:
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
 
-工作:
-建立:
-连续的**提交**：$Ubuntu-最新
-    
-步骤:
-    - 姓名: 签出代码
-uses: 操作/结帐@v4 作/结帐@v4
-姓名
-    - 姓名: 设置JDK17
-uses: 操作/设置-Java@v4
-和……一起:
-java版: '17'
-分布: 'temurin'
-缓存: Gradleradle
-姓名
-    - 姓名: 授予gradlew的执行权限
-跑: chmod+x gradlewhmod+x gradlew
-姓名
-    - 姓名: 使用渐变生成
-跑: ./gradlew装配释放/gradlew装配释放
-姓名
--姓名：将安装包上载到工件
-uses: 操作/上载工件@v4
-和……一起:
-姓名: release-apk
-路径: app/build/outputs/apk/release/*。apkpp/build/outputs/apk/release/*。安装包
-姓名
--姓名: 创建发布
-uses: softprops/action-gh-release@v1
-如果: github.event_name=='推'&&github.ref=='参考/标头/主要'
-和……一起:
-文件: app/build/outputs/apk/release/*.apk
-tag_name: v${{github.run_number}}
-姓名: 卢阿福热工作室构建${{github.run_number}}
-身体: |
-**内部版本**：#${{github.run_number}}
-**提交**：${{github.event.head_commit.message}}
-**作者**：@${{github.event.head_commit.author.username}}
-生成发布注释: 正确
-env:
-GitHub_TOKEN: ${{secrets.GITHUB_TOKEN}}
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./gradlew
+
+      - name: Build signed release APK
+        run: ./gradlew assembleRelease --stacktrace
+
+      - name: Verify APK signature
+        run: |
+          APK=$(ls app/build/outputs/apk/release/*.apk | head -n 1)
+          echo "APK=$APK"
+          # 32.0.0 起 apksigner 命令为 build-tools 下的可执行文件
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -n 1)
+          if [ -n "$APKSIGNER" ]; then
+            "$APKSIGNER" verify --print-certs "$APK"
+          else
+            echo "apksigner not found, skip verification"
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: crawler-tool-release
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: app/build/outputs/apk/release/*.apk
+          tag_name: v1.4.${{ github.run_number }}
+          name: Crawler Tool v1.4 (${{ github.run_number }})
+          draft: false
+          generate_release_notes: true
+          body: |
+            **构建号**:${{ github.run_number }}
+            **提交**:${{ github.event.head_commit.message }}
+            **作者**:@${{ github.event.head_commit.author.username }}
+
+            安装包为 release 签名版本,可直接覆盖安装 v1.3 及更早版本。
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

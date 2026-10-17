@@ -1,132 +1,103 @@
 <?xml version="1.0" encoding="utf-8"?>
-<com.google.android.material.card.MaterialCardView
-    xmlns:android="http://schemas.android.com/apk/res/android"
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/cardItem"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_marginBottom="8dp"
-    android:clipToOutline="true"
-    app:cardElevation="2dp"
-    app:cardCornerRadius="10dp"
-    app:strokeWidth="1dp"
-    app:strokeColor="?attr/colorOutline"
-    app:contentPadding="0dp"
-    app:cardBackgroundColor="?attr/colorSurface">
+    android:clickable="true"
+    android:focusable="true"
+    app:cardBackgroundColor="?attr/colorSurfaceContainerLow"
+    app:cardCornerRadius="14dp"
+    app:cardElevation="0dp"
+    app:strokeColor="?attr/colorOutlineVariant"
+    app:strokeWidth="1dp">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical">
+        android:orientation="vertical"
+        android:padding="10dp">
 
-        <!-- 顶部：序号标签 + 复制按钮 -->
+        <!-- 行首:序号 + 标签摘要 + 操作 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:paddingHorizontal="10dp"
-            android:paddingTop="8dp"
-            android:paddingBottom="4dp">
-
-            <FrameLayout
-                android:id="@+id/indexBadge"
-                android:layout_width="26dp"
-                android:layout_height="26dp">
-
-                <TextView
-                    android:id="@+id/tvIndex"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_gravity="center"
-                    android:textSize="11sp"
-                    android:textColor="?attr/colorOnPrimary"
-                    android:textStyle="bold" />
-
-            </FrameLayout>
+            android:orientation="horizontal">
 
             <TextView
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginStart="8dp"
-                android:text="匹配结果"
-                android:textSize="12sp"
-                android:textColor="?attr/colorOnSurfaceVariant"
-                android:maxLines="1"
-                android:ellipsize="end" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnCopyItem"
+                android:id="@+id/tvIndex"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="复制"
-                android:textSize="10sp"
-                android:minHeight="0dp"
-                android:paddingVertical="2dp"
-                android:paddingHorizontal="10dp"
-                app:cornerRadius="12dp"
-                app:backgroundTint="?attr/colorPrimaryContainer"
-                android:textColor="?attr/colorOnPrimaryContainer" />
+                android:background="@drawable/bg_index_badge"
+                android:gravity="center"
+                android:minWidth="28dp"
+                android:paddingHorizontal="7dp"
+                android:paddingVertical="3dp"
+                android:textColor="?attr/colorOnPrimaryContainer"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                tools:text="12" />
 
-        </LinearLayout>
-
-        <!-- HTML代码区域（带等宽字体和格式化） -->
-        <TextView
-            android:id="@+id/tvContent"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingHorizontal="12dp"
-            android:paddingVertical="8dp"
-            android:textSize="12sp"
-            android:textColor="?attr/colorOnSurface"
-            android:lineSpacingExtra="4dp"
-            android:typeface="monospace"
-            android:background="?attr/colorSurfaceVariant"
-            android:maxLines="3"
-            android:ellipsize="end" />
-
-        <!-- 分割线 -->
-        <View
-            android:layout_width="match_parent"
-            android:layout_height="0.5dp"
-            android:background="?attr/colorOutlineVariant" />
-
-        <!-- 底部：属性标签 + 展开/折叠按钮 -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingHorizontal="10dp"
-            android:paddingVertical="6dp">
-
-            <!-- 属性标签行 -->
             <TextView
                 android:id="@+id/tvAttrTags"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
                 android:layout_weight="1"
-                android:textSize="10sp"
-                android:textColor="?attr/colorOnSurfaceVariant"
+                android:ellipsize="end"
                 android:maxLines="1"
-                android:ellipsize="end" />
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:textSize="10sp"
+                tools:text="@href  @title" />
 
-            <!-- 展开/折叠按钮 -->
-            <TextView
-                android:id="@+id/btnExpand"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="展开更多内容"
-                android:textSize="11sp"
-                android:textColor="?attr/colorPrimary"
-                android:paddingHorizontal="10dp"
-                android:paddingVertical="2dp"
-                android:gravity="center"
-                android:visibility="gone"
-                android:background="?attr/colorPrimaryContainer" />
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnCopyItem"
+                style="@style/Widget.Material3.Button.IconButton"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:contentDescription="@string/btn_copy"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:minWidth="0dp"
+                app:icon="@drawable/ic_copy"
+                app:iconSize="16dp"
+                app:iconTint="?attr/colorOnSurfaceVariant" />
 
         </LinearLayout>
+
+        <!-- 内容区 -->
+        <TextView
+            android:id="@+id/tvContent"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:background="@drawable/bg_code_area"
+            android:ellipsize="end"
+            android:lineSpacingExtra="3dp"
+            android:maxLines="3"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="8dp"
+            android:textColor="?attr/colorOnSurface"
+            android:textSize="12sp"
+            android:typeface="monospace"
+            tools:text="&lt;a href=&quot;https://example.com&quot;&gt;Example&lt;/a&gt;" />
+
+        <TextView
+            android:id="@+id/btnExpand"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="end"
+            android:layout_marginTop="2dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:paddingHorizontal="6dp"
+            android:paddingVertical="4dp"
+            android:text="@string/result_expand"
+            android:textColor="?attr/colorPrimary"
+            android:textSize="11sp"
+            android:visibility="gone" />
 
     </LinearLayout>
 

@@ -5,7 +5,51 @@
 [![Kotlin](https://img.shields.io/badge/Kotlin-100%25-7F52FF?logo=kotlin)](https://kotlinlang.org)
 [![Android](https://img.shields.io/badge/Android-5.0%2B-3DDC84?logo=android)](https://developer.android.com)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](#)
-[![Version](https://img.shields.io/badge/Version-1.3-blue)](#)
+[![Version](https://img.shields.io/badge/Version-1.4-blue)](#)
+
+---
+
+## 🧭 界面结构(v1.4 全新布局)
+
+界面按「从上到下的操作流」重新组织,取代原先「整页滚动 + 卡片堆叠」的布局:输入永远固定在顶部,结果区独占剩余空间并内部滚动,主操作按钮吸附在底部拇指可达区。
+
+```
+┌─────────────────────────────┐
+│  Crawler Tool     🔖  ⬇  ⚙  │  ← 工具栏(历史/导出/设置)
+├─────────────────────────────┤
+│  [ XPath ] [ CSS ] [ 正则 ] │  ← 1 模式选择
+│  ┌───────────────────────┐  │
+│  │ 输入网站URL...      📋 │  │  ← URL(尾部图标=粘贴)
+│  └───────────────────────┘  │
+│  ┌───────────────────────┐  │
+│  │ XPath表达式(如//a)   {} │  │  ← 表达式(末尾图标=快捷片段)
+│  └───────────────────────┘  │
+│  @title @href @data-src →   │  ← 快捷属性(随模式切换)
+├─────────────────────────────┤
+│ 匹配结果  共 24 条  复制 🌳 ⬇ │  ← 2 结果区标题栏
+│ ┌─────────────────────────┐ │
+│ │ 1 @href @title      📋  │ │
+│ │ ┌─────────────────────┐ │ │
+│ │ │ <a href="...">...</a>   │ │ │  ← 语法高亮,默认 3 行
+│ │ └─────────────────────┘ │ │
+│ │                  展开 ∨ │ │
+│ └─────────────────────────┘ │
+│        ‹  1 / 3  ›          │  ← 分页(仅多页时出现)
+├─────────────────────────────┤
+│ [  🔍 开始匹配  ] [▤] [✕]   │  ← 3 吸底操作坞
+└─────────────────────────────┘
+```
+
+### 设计要点
+
+| 决策 | 原因 |
+|---|---|
+| 输入区固定、不参与滚动 | 结果很多时改表达式不必先滚回顶部 |
+| 结果区 `layout_weight=1` 独立滚动 | 原布局将列表放在 `wrap_content` 父容器内,高度塌陷为 0,结果实际不可见 |
+| 主操作按钮吸底 52dp | 单手握持时位于拇指自然落点,键盘弹出也不被顶走 |
+| 批量抓取 / 历史记录改为 BottomSheet | 低频配置项不再常驻主界面,输入区高度恒定 |
+| 反馈统一为 Snackbar 并锚定到按钮 | 不会被吸底操作坞遮挡 |
+| 空状态内置引导文案 | 首次打开即知道下一步做什么 |
 
 ---
 
@@ -401,6 +445,27 @@ cd CrawlerTool
 
 APK 路径：`app/build/outputs/apk/debug/app-debug.apk`
 
+### Release 构建与签名
+
+```bash
+./gradlew assembleRelease
+# 产物:app/build/outputs/apk/release/app-release.apk(已签名,可直接安装)
+```
+
+签名证书随仓库分发于 `keystore/crawler-release.jks`,凭据写在 `gradle.properties`:
+
+```properties
+crawler.storeFile=keystore/crawler-release.jks
+crawler.storePassword=luaappxcore
+crawler.keyAlias=luaappxcore
+crawler.keyPassword=luaappxcore
+```
+
+> 该证书与 LuaForge-Studio 使用同一 key,签名主体一致。
+> 换成自己的正式签名:替换 keystore 文件并改上述四项即可,`app/build.gradle` 无需改动。
+
+CI 由 `.github/workflows/main.yml` 驱动:推送到 `main` 自动构建、校验签名,并按 `v1.4.<构建号>` 发布到 GitHub Releases。
+
 ### 依赖
 
 ```kotlin
@@ -422,6 +487,7 @@ dependencies {
 
 | 版本 | 新特性 |
 |------|--------|
+| **v1.4** | 界面整体重排(输入固定 / 结果独立滚动 / 吸底操作坞)、批量与历史改为 BottomSheet、结果卡片重设计(序号徽标+等宽代码块+展开收起)、新增 HistoryAdapter 与历史条目删除、Snackbar 统一反馈、空状态引导、匹配耗时修复(消除同页二次请求)、批量抓取真正读取设置的延迟与重试、导出移至 IO 线程、修复分页越界递归、GitHub Actions 恢复可用并产出签名 APK |
 | **v1.3** | MVVM 架构重构、BaseActivity 基类、历史记录、自定义请求头(HeaderManager)、代理设置、JS 渲染引擎(JsRenderEngine)、XPath 规则手册(XPathRulesActivity)、批量延迟 & 重试、UA 快捷预设、增强树控件(搜索/展开到层/缩放按钮)、MediaStore 导出兼容、通知渠道、结果语法高亮缓存、XPath 引擎增强(表达式缓存+谓词扩展)、strings.xml 扩充80+ |
 | **v1.2** | 设置页面、主题系统、批量抓取、多格式导出、CSS/正则模式 |
 | **v1.1** | HTML 树形结构查看器、XPath 引擎增强、语法高亮 |

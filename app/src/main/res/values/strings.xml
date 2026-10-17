@@ -147,4 +147,40 @@
     <string name="delete">删除</string>
     <string name="edit">编辑</string>
     <string name="clipboard_detect">检测到链接: %s，点击填入</string>
+
+    <!-- 主界面新增 -->
+    <string name="result_title">匹配结果</string>
+    <string name="result_count">共 %1$d 条</string>
+    <string name="result_count_paged">共 %1$d 条 · 第 %2$d/%3$d 页</string>
+    <string name="result_expand">展开</string>
+    <string name="result_collapse">收起</string>
+    <string name="empty_title">还没有匹配结果</string>
+    <string name="empty_hint">输入网址与表达式后,点下方「开始匹配」</string>
+    <string name="pagination_prev">上一页</string>
+    <string name="pagination_next">下一页</string>
+    <string name="btn_copy">复制</string>
+    <string name="btn_copy_all">复制全部</string>
+
+    <!-- 快捷属性芯片 -->
+    <string name="chip_attr_title">@title</string>
+    <string name="chip_attr_href">@href</string>
+    <string name="chip_attr_data_original">@data-original</string>
+    <string name="chip_attr_data_src">@data-src</string>
+    <string name="chip_attr_text">text()</string>
+
+    <!-- 批量抓取补充 -->
+    <string name="batch_desc">在 URL 模板中用 {page} 表示页码,将按起始页到结束页依次抓取并合并结果</string>
+    <string name="batch_hint_delay">请求间隔 %s,失败重试 %d 次(可在设置中调整)</string>
+    <string name="batch_hint_no_delay">无请求间隔,失败重试 %d 次(可在设置中调整)</string>
+
+    <!-- 历史记录补充 -->
+    <string name="history_count_suffix">%1$d 条 · %2$s</string>
+    <string name="history_just_now">刚刚</string>
+    <string name="history_minutes_ago">%d 分钟前</string>
+    <string name="history_hours_ago">%d 小时前</string>
+    <string name="history_days_ago">%d 天前</string>
+
+    <!-- 状态补充 -->
+    <string name="status_loading_html">正在获取页面...</string>
+    <string name="status_no_html">尚无页面快照,请先执行匹配</string>
 </resources>

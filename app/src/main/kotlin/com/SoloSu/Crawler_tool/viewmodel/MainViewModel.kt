@@ -3,6 +3,11 @@ package com.SoloSu.Crawler_tool.viewmodel
 import android.app.Application
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.Context
+import android.content.ContentValues
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
@@ -11,35 +16,45 @@ import com.SoloSu.Crawler_tool.HistoryManager
 import com.SoloSu.Crawler_tool.ResultItem
 import com.SoloSu.Crawler_tool.repository.CrawlerRepository
 import com.SoloSu.Crawler_tool.repository.HistoryRepository
-import com.SoloSu.Crawler_tool.repository.SettingsRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 
+/**
+ * 主界面 UI 状态。所有可变字段集中在此,Activity 只负责渲染。
+ */
 data class MainUiState(
-    val rawHtml: String = "",
     val url: String = "",
     val expression: String = "",
     val matchMode: CrawlerEngine.MatchMode = CrawlerEngine.MatchMode.XPath,
+    /** 当前页展示的切片 */
     val results: List<ResultItem> = emptyList(),
+    /** 全量匹配结果,分页与导出都以它为准 */
     val allResults: List<String> = emptyList(),
     val currentPage: Int = 0,
     val totalPages: Int = 0,
+    /** 最近一次抓取到的 HTML,供结构树查看 */
+    val rawHtml: String = "",
     val statusText: String = "",
     val isLoading: Boolean = false,
-    val batchVisible: Boolean = false,
-)
+) {
+    val hasResults: Boolean get() = results.isNotEmpty()
+    /** 结果区为空且不处于加载中时,显示空状态引导 */
+    val showEmptyState: Boolean get() = results.isEmpty() && !isLoading
+}
 
 sealed class MainEvent {
-    data class ShowToast(val message: String) : MainEvent()
+    data class Message(val text: String) : MainEvent()
     data class ShowHistory(val items: List<HistoryManager.HistoryItem>) : MainEvent()
+    data class ShowExportChooser(val formats: List<String>) : MainEvent()
 }
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val crawlerRepo = CrawlerRepository(application)
-    private val settingsRepo = SettingsRepository(application)
     private val historyRepo = HistoryRepository(application)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val pageSize = 20
@@ -50,196 +65,284 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _events = MutableLiveData<MainEvent>()
     val events: LiveData<MainEvent> = _events
 
-    fun updateUrl(url: String) { _state.value = _state.value?.copy(url = url) }
-    fun updateExpression(expr: String) { _state.value = _state.value?.copy(expression = expr) }
-    fun updateMatchMode(mode: CrawlerEngine.MatchMode) { _state.value = _state.value?.copy(matchMode = mode) }
+    // ─── 输入同步 ─────────────────────────────────────────────
+
+    fun updateUrl(url: String) {
+        _state.value = _state.value?.copy(url = url)
+    }
+
+    fun updateExpression(expr: String) {
+        _state.value = _state.value?.copy(expression = expr)
+    }
+
+    fun updateMatchMode(mode: CrawlerEngine.MatchMode) {
+        _state.value = _state.value?.copy(matchMode = mode)
+    }
+
+    /** 从历史记录回填,同时重置结果区,避免旧结果与新表达式错配。 */
+    fun loadHistoryItem(item: HistoryManager.HistoryItem) {
+        val mode = when (item.mode) {
+            "CssSelector" -> CrawlerEngine.MatchMode.CssSelector
+            "Regex" -> CrawlerEngine.MatchMode.Regex
+            else -> CrawlerEngine.MatchMode.XPath
+        }
+        _state.value = (_state.value ?: MainUiState()).copy(
+            url = item.url,
+            expression = item.expression,
+            matchMode = mode,
+        )
+        clearResults()
+    }
+
+    // ─── 匹配 ────────────────────────────────────────────────
 
     fun performMatch() {
         val s = _state.value ?: return
+        if (s.isLoading) return
+
         val url = s.url.trim()
         val expr = s.expression.trim()
-        if (url.isBlank() || url == "https://") {
-            _events.value = MainEvent.ShowToast("请输入有效的URL")
-            return
-        }
-        if (expr.isBlank()) {
-            _events.value = MainEvent.ShowToast("请输入匹配表达式")
-            return
+        when {
+            url.isBlank() || !url.contains(".") ->
+                return emit("请输入有效的 URL")
+            expr.isBlank() ->
+                return emit("请输入匹配表达式")
         }
 
+        val previousHtml = s.rawHtml
         _state.value = s.copy(isLoading = true, statusText = "正在请求并匹配...")
 
         scope.launch {
-            val useJs = settingsRepo.isJsRenderEnabled()
-            val jsDelay = settingsRepo.getJsRenderDelay()
-            val result = crawlerRepo.fetchAndMatch(url, expr, s.matchMode, useJs, jsDelay)
-
-            val htmlResult = crawlerRepo.fetchHtml(url)
-            result.fold(
-                onSuccess = { items ->
+            crawlerRepo.fetchAndMatch(url, expr, s.matchMode).fold(
+                onSuccess = { page ->
+                    val results = page.matches
                     _state.value = _state.value?.copy(
-                        rawHtml = htmlResult.getOrDefault(""),
-                        allResults = items,
+                        // JS 渲染模式拿不到原始 HTML,此时保留上一次的快照
+                        rawHtml = page.html.ifBlank { previousHtml },
+                        allResults = results,
                         isLoading = false,
-                        statusText = if (items.isEmpty()) "匹配完成,未找到结果" else "匹配完成,共 ${items.size} 条结果"
+                        statusText = if (results.isEmpty()) "匹配完成,未找到结果"
+                        else "匹配完成,共 ${results.size} 条结果",
+                        currentPage = 0,
                     )
-                    showPage(0)
-                    if (items.isNotEmpty()) {
-                        historyRepo.save(url, expr, s.matchMode.toString(), items.size)
+                    applyPage(0)
+                    if (results.isNotEmpty()) {
+                        historyRepo.save(url, expr, s.matchMode.toString(), results.size)
                     }
                 },
                 onFailure = { e ->
                     _state.value = _state.value?.copy(
                         isLoading = false,
                         statusText = "匹配失败",
-                        results = emptyList()
+                        results = emptyList(),
+                        totalPages = 0,
                     )
-                    _events.value = MainEvent.ShowToast("匹配失败: ${e.message}")
+                    emit("匹配失败:${e.message?.lineSequence()?.firstOrNull() ?: "未知错误"}")
                 }
             )
         }
     }
 
-    fun performBatchMatch(pattern: String, startPage: Int, endPage: Int) {
-        _state.value = _state.value?.copy(isLoading = true, statusText = "正在批量抓取...")
+    fun performBatchMatch(urlPattern: String, startPage: Int, endPage: Int) {
+        val s = _state.value ?: return
+        if (s.isLoading) return
+        val expr = s.expression.trim()
+        if (expr.isBlank()) return emit("请先输入匹配表达式")
+        if (urlPattern.isBlank() || !urlPattern.contains("{page}")) {
+            return emit("URL 模板需包含 {page} 占位符")
+        }
+        if (endPage < startPage) return emit("结束页不能小于起始页")
+
+        _state.value = s.copy(isLoading = true, statusText = "正在批量抓取...")
+
         scope.launch {
             val result = crawlerRepo.fetchAndMatchBatch(
-                pattern,
-                _state.value?.expression ?: "",
-                _state.value?.matchMode ?: CrawlerEngine.MatchMode.XPath,
-                startPage, endPage
-            )
-            // val htmlResult = crawlerRepo.fetchHtml(url)  // removed: url not in scope
+                urlPattern, expr, s.matchMode, startPage, endPage
+            ) { progress ->
+                val text = "正在抓取第 ${progress.page}/${progress.total} 页..."
+                if (_state.value?.statusText != text) {
+                    _state.value = _state.value?.copy(statusText = text)
+                }
+            }
             result.fold(
                 onSuccess = { items ->
                     _state.value = _state.value?.copy(
                         rawHtml = "",
                         allResults = items,
                         isLoading = false,
-                        statusText = "批量抓取完成,共 ${items.size} 条结果"
+                        statusText = "批量抓取完成,共 ${items.size} 条结果",
+                        currentPage = 0,
                     )
-                    showPage(0)
+                    applyPage(0)
+                    if (items.isNotEmpty()) {
+                        historyRepo.save(urlPattern, expr, s.matchMode.toString(), items.size)
+                    }
                 },
                 onFailure = { e ->
                     _state.value = _state.value?.copy(
                         isLoading = false,
                         statusText = "批量抓取失败",
-                        results = emptyList()
+                        results = emptyList(),
+                        totalPages = 0,
                     )
-                    _events.value = MainEvent.ShowToast("批量抓取失败: ${e.message}")
+                    emit("批量抓取失败:${e.message?.lineSequence()?.firstOrNull() ?: "未知错误"}")
                 }
             )
         }
     }
 
     fun clearResults() {
-        _state.value = _state.value?.copy(
+        val s = _state.value ?: return
+        _state.value = s.copy(
             allResults = emptyList(),
             results = emptyList(),
             currentPage = 0,
-            statusText = "已清空"
+            totalPages = 0,
+            statusText = "",
         )
     }
 
+    // ─── 分页 ────────────────────────────────────────────────
+
     fun goToPage(page: Int) {
         val s = _state.value ?: return
-        val totalPages = (s.allResults.size + pageSize - 1) / pageSize
-        if (page < 0 || page >= totalPages) return
+        if (page < 0 || page >= s.totalPages || page == s.currentPage) return
         _state.value = s.copy(currentPage = page)
-        showPage(page)
+        applyPage(page)
     }
 
-    fun copyRuleExpression() {
-        val expr = _state.value?.expression ?: ""
-        if (expr.isBlank()) { _events.value = MainEvent.ShowToast("表达式为空"); return }
-        val clipboard = getApplication<Application>()
-            .getSystemService(android.content.Context.CLIPBOARD_SERVICE) as ClipboardManager
-        clipboard.setPrimaryClip(ClipData.newPlainText("Crawler Rule", expr))
-        _events.value = MainEvent.ShowToast("已复制规则表达式")
+    fun nextPage() = goToPage((_state.value?.currentPage ?: 0) + 1)
+
+    fun prevPage() = goToPage((_state.value?.currentPage ?: 0) - 1)
+
+    /** 按页码把 allResults 切成一页,并同步 totalPages。 */
+    private fun applyPage(page: Int) {
+        val s = _state.value ?: return
+        if (s.allResults.isEmpty()) {
+            _state.value = s.copy(results = emptyList(), currentPage = 0, totalPages = 0)
+            return
+        }
+        val totalPages = (s.allResults.size + pageSize - 1) / pageSize
+        val safePage = page.coerceIn(0, totalPages - 1)
+        val start = safePage * pageSize
+        val end = minOf(start + pageSize, s.allResults.size)
+        val slice = s.allResults.subList(start, end).mapIndexed { i, content ->
+            ResultItem(start + i + 1, content)
+        }
+        _state.value = s.copy(
+            results = slice,
+            currentPage = safePage,
+            totalPages = totalPages,
+        )
+    }
+
+    // ─── 复制 / 历史 ──────────────────────────────────────────
+
+    fun copyExpression() {
+        val expr = _state.value?.expression.orEmpty()
+        if (expr.isBlank()) return emit("表达式为空")
+        copyToClipboard(expr)
+        emit("已复制规则表达式")
+    }
+
+    fun copyAllResults() {
+        val all = _state.value?.allResults.orEmpty()
+        if (all.isEmpty()) return emit("没有可复制的结果")
+        copyToClipboard(all.joinToString("\n"))
+        emit("已复制 ${all.size} 条结果")
+    }
+
+    private fun copyToClipboard(text: String) {
+        // minSdk 21:不能使用 getSystemService(Class),改用字符串方式获取
+        val manager = getApplication<Application>()
+            .getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+        manager?.setPrimaryClip(ClipData.newPlainText("Crawler Tool", text))
     }
 
     fun showHistory() {
         val items = historyRepo.loadHistory()
-        if (items.isEmpty()) { _events.value = MainEvent.ShowToast("暂无历史记录"); return }
+        if (items.isEmpty()) return emit("暂无历史记录")
         _events.value = MainEvent.ShowHistory(items)
     }
 
-    fun loadHistoryItem(item: HistoryManager.HistoryItem) {
-        _state.value = _state.value?.copy(
-            url = item.url,
-            expression = item.expression,
-            matchMode = when (item.mode) {
-                "CssSelector" -> CrawlerEngine.MatchMode.CssSelector
-                "Regex" -> CrawlerEngine.MatchMode.Regex
-                else -> CrawlerEngine.MatchMode.XPath
-            }
-        )
+    fun deleteHistoryItem(item: HistoryManager.HistoryItem) {
+        historyRepo.delete(item.id)
     }
 
-    fun getExportFormats() = arrayOf("JSON", "CSV", "纯文本")
+    fun clearHistory() {
+        historyRepo.clearAll()
+    }
 
+    // ─── 导出 ────────────────────────────────────────────────
+
+    fun requestExport() {
+        if (_state.value?.allResults.isNullOrEmpty()) return emit("没有可导出的结果")
+        _events.value = MainEvent.ShowExportChooser(listOf("JSON", "CSV", "纯文本"))
+    }
+
+    /** 导出到外部存储;Android 10+ 走 MediaStore,无需写权限。 */
     fun exportResults(format: String) {
-        val items = _state.value?.allResults ?: emptyList()
-        if (items.isEmpty()) { _events.value = MainEvent.ShowToast("没有可导出的结果"); return }
+        val items = _state.value?.allResults.orEmpty()
+        if (items.isEmpty()) return emit("没有可导出的结果")
 
-        val content = crawlerRepo.exportResults(items, format)
-        val ext = when (format) { "json" -> "json"; "csv" -> "csv"; else -> "txt" }
-        val fileName = "Crawler_Results_${System.currentTimeMillis()}.$ext"
+        val key = when (format) {
+            "JSON" -> "json"
+            "CSV" -> "csv"
+            else -> "text"
+        }
 
-        try {
-            val dir = java.io.File(android.os.Environment.getExternalStorageDirectory(), "Crawler-Tool")
-            if (!dir.exists()) dir.mkdirs()
-            val file = java.io.File(dir, fileName)
-            file.writeText(content)
-            _events.value = MainEvent.ShowToast("已导出到: ${file.absolutePath}")
-        } catch (e: Exception) {
-            // 若直接访问失败,尝试 MediaStore (Android 10+)
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                try {
-                    val context = getApplication<Application>()
-                    val values = android.content.ContentValues().apply {
-                        put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-                        put(android.provider.MediaStore.MediaColumns.MIME_TYPE, when (ext) {
-                            "json" -> "application/json"
-                            "csv" -> "text/csv"
-                            else -> "text/plain"
-                        })
-                        put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, "Crawler-Tool")
+        scope.launch {
+            val outcome = withContext(Dispatchers.IO) {
+                runCatching {
+                    val content = crawlerRepo.exportResults(items, key)
+                    val ext = when (key) {
+                        "json" -> "json"
+                        "csv" -> "csv"
+                        else -> "txt"
                     }
-                    val uri = context.contentResolver.insert(
-                        android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values
-                    )
-                    uri?.let {
-                        context.contentResolver.openOutputStream(it)?.use { os ->
-                            os.write(content.toByteArray())
-                        }
-                        _events.value = MainEvent.ShowToast("已导出到: Crawler-Tool/$fileName")
-                    } ?: throw Exception("无法创建文件")
-                } catch (e2: Exception) {
-                    _events.value = MainEvent.ShowToast("导出失败: ${e2.message}")
+                    val mime = when (key) {
+                        "json" -> "application/json"
+                        "csv" -> "text/csv"
+                        else -> "text/plain"
+                    }
+                    val fileName = "Crawler_Results_${System.currentTimeMillis()}.$ext"
+                    writeExport(content, fileName, mime)
                 }
-            } else {
-                _events.value = MainEvent.ShowToast("导出失败: 无写入权限")
             }
+            outcome.fold(
+                onSuccess = { emit("已导出:$it") },
+                onFailure = { emit("导出失败:${it.message ?: "未知错误"}") }
+            )
         }
     }
 
-    private fun showPage(page: Int) {
-        val s = _state.value ?: return
-        if (s.allResults.isEmpty()) {
-            _state.value = s.copy(results = emptyList(), totalPages = 0)
-            return
+    @Suppress("DEPRECATION")
+    private fun writeExport(content: String, fileName: String, mime: String): String {
+        val app = getApplication<Application>()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                put(MediaStore.MediaColumns.MIME_TYPE, mime)
+                put(MediaStore.MediaColumns.RELATIVE_PATH, "${Environment.DIRECTORY_DOWNLOADS}/Crawler-Tool")
+            }
+            val resolver = app.contentResolver
+            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+                ?: throw IllegalStateException("无法创建文件")
+            resolver.openOutputStream(uri)?.use { it.write(content.toByteArray()) }
+                ?: throw IllegalStateException("无法写入文件")
+            return "Downloads/Crawler-Tool/$fileName"
         }
-        val totalPages = (s.allResults.size + pageSize - 1) / pageSize
-        val start = page * pageSize
-        val end = minOf(start + pageSize, s.allResults.size)
-        if (start >= s.allResults.size) {
-            goToPage(0)
-            return
-        }
-        val pageItems = s.allResults.subList(start, end).mapIndexed { i, c ->
-            ResultItem(start + i + 1, c)
-        }
-        _state.value = s.copy(results = pageItems, currentPage = page, totalPages = totalPages)
+
+        val dir = File(Environment.getExternalStoragePublicDirectory(
+            Environment.DIRECTORY_DOWNLOADS
+        ), "Crawler-Tool")
+        if (!dir.exists() && !dir.mkdirs()) throw IllegalStateException("无法创建目录 ${dir.path}")
+        val file = File(dir, fileName)
+        file.writeText(content)
+        return file.absolutePath
+    }
+
+    private fun emit(text: String) {
+        _events.value = MainEvent.Message(text)
     }
 }

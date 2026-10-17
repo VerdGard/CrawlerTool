@@ -3,36 +3,61 @@ package com.SoloSu.Crawler_tool
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.graphics.drawable.GradientDrawable
 import android.text.SpannableStringBuilder
 import android.text.style.ForegroundColorSpan
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.FrameLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
-import com.google.android.material.card.MaterialCardView
 import com.google.android.material.button.MaterialButton
-import android.graphics.drawable.GradientDrawable
+import com.google.android.material.card.MaterialCardView
 import com.google.android.material.color.MaterialColors
 import java.lang.ref.WeakReference
 import java.util.regex.Pattern
 
+/**
+ * 结果列表适配器。
+ *
+ * 视觉结构(自上而下):序号徽标 + 属性摘要 → 等宽内容块 → 展开/收起。
+ * 内容块默认折叠为 3 行,长内容才出现展开入口。
+ */
 class ResultAdapter(
-    private val onLongClickHtml: ((htmlContent: String) -> Unit)? = null
+    private val onLongClickItem: ((item: ResultItem) -> Unit)? = null
 ) : ListAdapter<ResultItem, ResultAdapter.ViewHolder>(DiffCallback()) {
 
     companion object {
-        // 内容高亮缓存：对相同 HTML 内容缓存 SpannableString，避免每次 bind 重新解析正则
-        private val highlightCache = object : LinkedHashMap<String, WeakReference<CharSequence>>(64, 0.75f, true) {
-            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, WeakReference<CharSequence>>): Boolean {
-                return size > 32
+        private const val COLLAPSED_LINES = 3
+
+        /** 语法高亮结果缓存:避免滚动时对同一内容重复跑正则。 */
+        private val highlightCache =
+            object : LinkedHashMap<String, WeakReference<CharSequence>>(64, 0.75f, true) {
+                override fun removeEldestEntry(
+                    eldest: MutableMap.MutableEntry<String, WeakReference<CharSequence>>
+                ): Boolean = size > 32
             }
-        }
+
+        private val TAG_BLOCK = Pattern.compile("<[^>]+>")
+        private val TAG_TOKEN = Pattern.compile(
+            "(</?)" +
+                "|(/?>)" +
+                "|([a-zA-Z][\\w-]*)" +
+                "|(=\")" +
+                "|(=\')" +
+                "|(=\"[^\"]*\")" +
+                "|(='[^']*')" +
+                "|([\\w./#:-]+)"
+        )
+        private val ATTR_PATTERN = Pattern.compile("@(\\w[\\w-]*)")
+        private val COMMON_ATTRS =
+            listOf("href", "src", "title", "data-src", "data-original", "alt", "class", "id")
+
+        fun clearHighlightCache() = synchronized(highlightCache) { highlightCache.clear() }
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -46,300 +71,185 @@ class ResultAdapter(
     }
 
     inner class ViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
-        // 预解析颜色值，避免每次 bind 重复调用 ContextCompat.getColor
-        private val tagColor: Int
-        private val attrColor: Int
-        private val valueColor: Int
-        private val textColor: Int
 
+        private val ctx: Context = itemView.context
+        private val tagColor = ContextCompat.getColor(ctx, R.color.html_tag_color)
+        private val attrColor = ContextCompat.getColor(ctx, R.color.html_attr_color)
+        private val valueColor = ContextCompat.getColor(ctx, R.color.html_value_color)
+        private val textColor = ContextCompat.getColor(ctx, R.color.html_text_color)
+
+        private val cardItem: MaterialCardView = itemView.findViewById(R.id.cardItem)
         private val tvIndex: TextView = itemView.findViewById(R.id.tvIndex)
         private val tvContent: TextView = itemView.findViewById(R.id.tvContent)
         private val tvAttrTags: TextView = itemView.findViewById(R.id.tvAttrTags)
         private val btnExpand: TextView = itemView.findViewById(R.id.btnExpand)
         private val btnCopyItem: MaterialButton = itemView.findViewById(R.id.btnCopyItem)
-        private val indexBadge: FrameLayout = itemView.findViewById(R.id.indexBadge)
-        private val cardItem: MaterialCardView = itemView.findViewById(R.id.cardItem)
 
         init {
-            val ctx = itemView.context
-            tagColor = ContextCompat.getColor(ctx, R.color.html_tag_color)
-            attrColor = ContextCompat.getColor(ctx, R.color.html_attr_color)
-            valueColor = ContextCompat.getColor(ctx, R.color.html_value_color)
-            textColor = ContextCompat.getColor(ctx, R.color.html_text_color)
-
-            // 设置主题配色的圆角背景
-            val bgColor = com.google.android.material.color.MaterialColors.getColor(ctx, androidx.appcompat.R.attr.colorPrimary, 0)
-            val gd = android.graphics.drawable.GradientDrawable().apply {
-                shape = android.graphics.drawable.GradientDrawable.RECTANGLE
-                setColor(bgColor)
-                cornerRadius = dp(13f)
-            }
-            indexBadge.background = gd
-
-            btnExpand.apply {
-                val bgColor = com.google.android.material.color.MaterialColors.getColor(ctx, com.google.android.material.R.attr.colorPrimaryContainer, 0)
-                val gd = android.graphics.drawable.GradientDrawable().apply {
-                    shape = android.graphics.drawable.GradientDrawable.RECTANGLE
-                    setColor(bgColor)
-                    cornerRadius = dp(10f)
-                }
-                background = gd
-            }
-        }
-
-        private fun dp(value: Float): Float {
-            return value * itemView.context.resources.displayMetrics.density
-        }
-
-        fun bind(item: ResultItem) {
-            tvIndex.text = "${item.index}"
-            tvContent.text = highlightHtmlContent(tvContent.context, item.content)
-
-            val attrTags = extractAttrTags(item.content)
-            tvAttrTags.text = attrTags
-
-            val contentLineCount = estimateLineCount(item.content)
-            val needsExpand = contentLineCount > 3
-
-            if (needsExpand) {
-                btnExpand.visibility = View.VISIBLE
-                if (item.expanded) {
-                    tvContent.maxLines = Int.MAX_VALUE
-                    btnExpand.text = "收起"
-                } else {
-                    tvContent.maxLines = 3
-                    btnExpand.text = "展开更多内容"
-                }
-            } else {
-                btnExpand.visibility = View.GONE
-                tvContent.maxLines = Int.MAX_VALUE
-            }
-
-            btnExpand.setOnClickListener {
-                item.expanded = !item.expanded
-                if (item.expanded) {
-                    tvContent.maxLines = Int.MAX_VALUE
-                    btnExpand.text = "收起"
-                } else {
-                    tvContent.maxLines = 3
-                    btnExpand.text = "展开更多内容"
-                }
-            }
-
-            btnCopyItem.setOnClickListener {
-                copyToClipboard(itemView.context, item.content, "[${item.index}]")
-            }
+            // 序号徽标:主色容器圆角底
+            val badgeColor = MaterialColors.getColor(
+                ctx, com.google.android.material.R.attr.colorPrimaryContainer, 0
+            )
+            tvIndex.background = rounded(badgeColor, 8f)
 
             cardItem.setOnLongClickListener {
-                val content = item.content
-                if (isProbablyHtml(content)) {
-                    HtmlTreeDialog.show(cardItem.context, content)
-                } else {
-                    onLongClickHtml?.invoke(content)
-                }
+                onLongClickItem?.invoke(
+                    getItem(bindingAdapterPosition.takeIf { it != RecyclerView.NO_POSITION } ?: 0)
+                )
                 true
             }
         }
 
-        private fun copyToClipboard(context: Context, text: String, label: String) {
-            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            val clip = ClipData.newPlainText("Crawler Result", text)
-            clipboard.setPrimaryClip(clip)
-            Toast.makeText(context, "已复制: $label", Toast.LENGTH_SHORT).show()
+        private fun rounded(color: Int, radiusDp: Float): GradientDrawable =
+            GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                setColor(color)
+                cornerRadius = radiusDp * ctx.resources.displayMetrics.density
+            }
+
+        fun bind(item: ResultItem) {
+            tvIndex.text = item.index.toString()
+            tvContent.text = highlight(ctx, item.content)
+            tvAttrTags.text = extractAttrTags(item.content)
+            tvAttrTags.visibility = if (tvAttrTags.text.isNullOrEmpty()) View.GONE else View.VISIBLE
+
+            val collapsible = estimateLineCount(item.content) > COLLAPSED_LINES
+            if (collapsible) {
+                btnExpand.visibility = View.VISIBLE
+                applyExpanded(item.expanded)
+                btnExpand.setOnClickListener {
+                    item.expanded = !item.expanded
+                    applyExpanded(item.expanded)
+                }
+            } else {
+                btnExpand.visibility = View.GONE
+                tvContent.maxLines = Int.MAX_VALUE
+                tvContent.ellipsize = null
+            }
+
+            btnCopyItem.setOnClickListener {
+                val cb = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                cb.setPrimaryClip(ClipData.newPlainText("Crawler Result", item.content))
+                Toast.makeText(ctx, "已复制第 ${item.index} 条", Toast.LENGTH_SHORT).show()
+            }
         }
 
+        private fun applyExpanded(expanded: Boolean) {
+            if (expanded) {
+                tvContent.maxLines = Int.MAX_VALUE
+                tvContent.ellipsize = null
+                btnExpand.text = ctx.getString(R.string.result_collapse)
+            } else {
+                tvContent.maxLines = COLLAPSED_LINES
+                tvContent.ellipsize = android.text.TextUtils.TruncateAt.END
+                btnExpand.text = ctx.getString(R.string.result_expand)
+            }
+        }
+
+        /** 粗略估算换行后的视觉行数,用于决定是否显示展开入口。 */
         private fun estimateLineCount(text: String): Int {
             if (text.isEmpty()) return 0
-            val lines = text.split("\n")
-            var totalLines = 0
-            for (line in lines) {
-                if (line.isEmpty()) {
-                    totalLines += 1
-                } else {
-                    totalLines += (line.length / 40) + 1
-                }
+            return text.split('\n').sumOf { line ->
+                if (line.isEmpty()) 1 else line.length / 40 + 1
             }
-            return totalLines
         }
 
         private fun extractAttrTags(content: String): String {
-            val tags = mutableSetOf<String>()
-            val attrPattern = Pattern.compile("@(\\w[\\w-]*)")
-            val attrMatcher = attrPattern.matcher(content)
-            while (attrMatcher.find()) {
-                tags.add("@${attrMatcher.group(1)}")
-            }
-            if (content.contains("text()", ignoreCase = true) ||
-                content.contains("text=\"", ignoreCase = true)
-            ) {
-                tags.add("text()")
-            }
+            val tags = LinkedHashSet<String>()
+            val matcher = ATTR_PATTERN.matcher(content)
+            while (matcher.find() && tags.size < 6) tags.add("@${matcher.group(1)}")
             if (tags.isEmpty()) {
-                val commonAttrs = listOf("title", "href", "src", "data-src", "data-original", "alt", "class", "id")
-                for (attr in commonAttrs) {
-                    if (content.contains(attr, ignoreCase = true)) {
+                content.contains("text()", true) || content.contains("text=\"", true)
+            }.let { if (it) tags.add("text()") }
+            if (tags.isEmpty()) {
+                for (attr in COMMON_ATTRS) {
+                    if (content.contains(attr, true)) {
                         tags.add("@$attr")
                         if (tags.size >= 6) break
                     }
                 }
             }
-            return if (tags.isEmpty()) "" else tags.take(6).joinToString("  ")
+            return tags.joinToString("  ")
         }
 
-        private fun highlightHtmlContent(context: Context, rawContent: String): CharSequence {
-            // 使用 ViewHolder 初始化时预解析的颜色值
-            val sb = SpannableStringBuilder()
+        private fun highlight(context: Context, raw: String): CharSequence {
             synchronized(highlightCache) {
-                val cached = highlightCache[rawContent]?.get()
-                if (cached != null) return cached
+                highlightCache[raw]?.get()?.let { return it }
             }
-
-            val tagBlockPattern = Pattern.compile("<[^>]+>")
-            val matcher = tagBlockPattern.matcher(rawContent)
+            val sb = SpannableStringBuilder()
+            val matcher = TAG_BLOCK.matcher(raw)
             var lastEnd = 0
-
             while (matcher.find()) {
-                if (matcher.start() > lastEnd) {
-                    sb.append(rawContent.substring(lastEnd, matcher.start()))
-                }
-
-                val fullTag = matcher.group()
-                val innerSb = SpannableStringBuilder()
-                val innerPattern = Pattern.compile(
-                    "(</?)" +
-                    "|(/?>)" +
-                    "|([a-zA-Z][\\w-]*)" +
-                    "|(=\")" +
-                    "|(=\')" +
-                    "|(=\"[^\"]*\")" +
-                    "|(='[^']*')" +
-                    "|([\\w./#:-]+)"
-                )
-                val innerMatcher = innerPattern.matcher(fullTag)
-                var innerLast = 0
-                var afterEqualsQuote = false
-
-                while (innerMatcher.find()) {
-                    if (innerMatcher.start() > innerLast) {
-                        val between = fullTag.substring(innerLast, innerMatcher.start())
-                        innerSb.append(between)
-                    }
-
-                    val bracketOpen = innerMatcher.group(1)
-                    val bracketClose = innerMatcher.group(2)
-                    val nameToken = innerMatcher.group(3)
-                    val equalsQuote = innerMatcher.group(4)
-                    val equalsApos = innerMatcher.group(5)
-                    val quotedValue = innerMatcher.group(6)
-                    val aposValue = innerMatcher.group(7)
-                    val bareValue = innerMatcher.group(8)
-
-                    when {
-                        bracketOpen != null -> {
-                            val s = SpannableStringBuilder(bracketOpen)
-                            s.setSpan(ForegroundColorSpan(textColor), 0, s.length, 0)
-                            innerSb.append(s)
-                        }
-                        bracketClose != null -> {
-                            val s = SpannableStringBuilder(bracketClose)
-                            s.setSpan(ForegroundColorSpan(textColor), 0, s.length, 0)
-                            innerSb.append(s)
-                        }
-                        afterEqualsQuote -> {
-                            if (nameToken != null) {
-                                val s = SpannableStringBuilder(nameToken)
-                                s.setSpan(ForegroundColorSpan(valueColor), 0, s.length, 0)
-                                innerSb.append(s)
-                            } else if (bareValue != null) {
-                                val s = SpannableStringBuilder(bareValue)
-                                s.setSpan(ForegroundColorSpan(valueColor), 0, s.length, 0)
-                                innerSb.append(s)
-                            } else if (quotedValue != null) {
-                                val s = SpannableStringBuilder(quotedValue)
-                                s.setSpan(ForegroundColorSpan(valueColor), 0, s.length, 0)
-                                innerSb.append(s)
-                            } else if (aposValue != null) {
-                                val s = SpannableStringBuilder(aposValue)
-                                s.setSpan(ForegroundColorSpan(valueColor), 0, s.length, 0)
-                                innerSb.append(s)
-                            }
-                            afterEqualsQuote = false
-                        }
-                        equalsQuote != null || equalsApos != null -> {
-                            val eq = if (equalsQuote != null) "=\"" else "='"
-                            val s = SpannableStringBuilder(eq)
-                            s.setSpan(ForegroundColorSpan(textColor), 0, s.length, 0)
-                            innerSb.append(s)
-                            afterEqualsQuote = true
-                        }
-                        quotedValue != null -> {
-                            val s = SpannableStringBuilder(quotedValue)
-                            s.setSpan(ForegroundColorSpan(valueColor), 0, s.length, 0)
-                            innerSb.append(s)
-                        }
-                        aposValue != null -> {
-                            val s = SpannableStringBuilder(aposValue)
-                            s.setSpan(ForegroundColorSpan(valueColor), 0, s.length, 0)
-                            innerSb.append(s)
-                        }
-                        nameToken != null -> {
-                            val before = fullTag.substring(0, innerMatcher.start())
-                            val containsOpeningBracket = before.contains("<")
-                            val hasPreviousAttrOrTag = containsOpeningBracket &&
-                                !before.matches(Regex("^\\s*<\\s*\$"))
-                            if (hasPreviousAttrOrTag) {
-                                val s = SpannableStringBuilder(nameToken)
-                                s.setSpan(ForegroundColorSpan(attrColor), 0, s.length, 0)
-                                innerSb.append(s)
-                            } else {
-                                val s = SpannableStringBuilder(nameToken)
-                                s.setSpan(ForegroundColorSpan(tagColor), 0, s.length, 0)
-                                innerSb.append(s)
-                            }
-                        }
-                        bareValue != null -> {
-                            val s = SpannableStringBuilder(bareValue)
-                            s.setSpan(ForegroundColorSpan(valueColor), 0, s.length, 0)
-                            innerSb.append(s)
-                        }
-                    }
-                    innerLast = innerMatcher.end()
-                }
-                if (innerLast < fullTag.length) {
-                    innerSb.append(fullTag.substring(innerLast))
-                }
-                sb.append(innerSb)
+                if (matcher.start() > lastEnd) sb.append(raw, lastEnd, matcher.start())
+                sb.append(colorizeTag(matcher.group()))
                 lastEnd = matcher.end()
             }
-            if (lastEnd < rawContent.length) {
-                sb.append(rawContent.substring(lastEnd))
-            }
-            synchronized(highlightCache) {
-                highlightCache[rawContent] = WeakReference(sb)
-            }
+            if (lastEnd < raw.length) sb.append(raw, lastEnd, raw.length)
+            synchronized(highlightCache) { highlightCache[raw] = WeakReference(sb) }
             return sb
         }
 
-        private fun isProbablyHtml(text: String): Boolean {
-            val trimmed = text.trim()
-            if (trimmed.isEmpty()) return false
-            return trimmed.contains("<") && trimmed.contains(">") &&
-                (trimmed.contains("</") ||
-                 trimmed.matches(Regex(".*<[a-zA-Z!?][^>]*>.*")) ||
-                 trimmed.startsWith("<!") ||
-                 trimmed.startsWith("<?xml"))
+        /** 对单个 `<...>` 片段着色:标签名=蓝、属性名=红、值=绿、括号=正文色。 */
+        private fun colorizeTag(tag: String): CharSequence {
+            val out = SpannableStringBuilder()
+            val m = TAG_TOKEN.matcher(tag)
+            var last = 0
+            var pendingValue = false
+            while (m.find()) {
+                if (m.start() > last) out.append(tag, last, m.start())
+                val bracketOpen = m.group(1)
+                val bracketClose = m.group(2)
+                val nameToken = m.group(3)
+                val equalsQuote = m.group(4)
+                val equalsApos = m.group(5)
+                val quotedValue = m.group(6)
+                val aposValue = m.group(7)
+                val bareValue = m.group(8)
+
+                when {
+                    bracketOpen != null -> out.appendColored(bracketOpen, textColor)
+                    bracketClose != null -> out.appendColored(bracketClose, textColor)
+                    equalsQuote != null || equalsApos != null -> {
+                        out.appendColored(if (equalsQuote != null) "=\"" else "='", textColor)
+                        pendingValue = true
+                    }
+                    quotedValue != null -> {
+                        out.appendColored(quotedValue, valueColor); pendingValue = false
+                    }
+                    aposValue != null -> {
+                        out.appendColored(aposValue, valueColor); pendingValue = false
+                    }
+                    nameToken != null -> {
+                        if (pendingValue) {
+                            out.appendColored(nameToken, valueColor)
+                            pendingValue = false
+                        } else {
+                            val before = tag.substring(0, m.start())
+                            val isTagName = before.contains("<") &&
+                                before.substringAfter('<').isBlank()
+                            out.appendColored(nameToken, if (isTagName) tagColor else attrColor)
+                        }
+                    }
+                    bareValue != null -> out.appendColored(bareValue, valueColor)
+                }
+                last = m.end()
+            }
+            if (last < tag.length) out.append(tag, last, tag.length)
+            return out
+        }
+
+        private fun SpannableStringBuilder.appendColored(text: String, color: Int) {
+            val start = length
+            append(text)
+            setSpan(ForegroundColorSpan(color), start, length, 0)
         }
     }
 
     class DiffCallback : DiffUtil.ItemCallback<ResultItem>() {
-        override fun areItemsTheSame(oldItem: ResultItem, newItem: ResultItem): Boolean {
-            return oldItem.index == newItem.index
-        }
+        override fun areItemsTheSame(oldItem: ResultItem, newItem: ResultItem) =
+            oldItem.index == newItem.index
 
-        override fun areContentsTheSame(oldItem: ResultItem, newItem: ResultItem): Boolean {
-            return oldItem == newItem
-        }
+        override fun areContentsTheSame(oldItem: ResultItem, newItem: ResultItem) =
+            oldItem.content == newItem.content
     }
-
-
 }
