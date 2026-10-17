@@ -113,8 +113,6 @@
     <!-- 定时任务 -->
 
     <!-- 关于 -->
-    <string name="about_title">关于 Crawler Tool</string>
-    <string name="about_message">Crawler Tool v1.3\n\n全能网页数据提取工具，支持 XPath/CSS选择器/正则表达式，内置HTML树形查看器、批量抓取、历史记录、Cookie管理、图片预览、JS渲染等20+功能。\n\nBy: SoloSu</string>
     <string name="about_changelog">更新日志</string>
     <string name="about_changelog_content">v1.3 新特性:\n• 历史记录\n• 批量请求延迟\n• 一键分享功能\n• 剪贴板智能检测\n• 结果持久化\n• Cookie/Header 管理\n• 图片预览模式\n• 表达式输入增强\n• 正则表达式测试器\n• 数据清洗与过滤\n• JavaScript渲染支持\n• URL工具箱\n• 数据统计看板\n• 多标签页\n• 代理设置\n• 定时任务\n• 夜间模式WebView\n• 手势快捷操作\n• 深色启动图\n• 国际化支持</string>
 

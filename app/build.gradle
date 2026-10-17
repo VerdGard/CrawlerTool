@@ -6,14 +6,18 @@ plugins {
 
 android {
     namespace 'com.SoloSu.Crawler_tool'
-    compileSdk 36
+    // Android 17 (API 37)。SDK 仓库里该版本只有 android-37.0 / 37.1 / 37.2
+    // 三个带小版本的平台包,没有不带小版本的 android-37,因此必须显式给出小版本号,
+    // 否则 AGP 会去找 platforms/android-37 并报找不到目标。
+    compileSdk 37
+    compileSdkMinor 0
 
     defaultConfig {
         applicationId 'com.SoloSu.Crawler_tool'
         minSdk 30
-        targetSdk 34
-        versionCode 8
-        versionName "1.5"
+        targetSdk 37
+        versionCode 9
+        versionName "1.6"
 
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }

@@ -3,20 +3,21 @@
 > 轻量级 Android 网页数据提取工具 — 支持 **XPath / CSS 选择器 / 正则表达式** 三种匹配模式，内置 HTML 树形结构查看器，支持批量抓取、JS 渲染、代理、历史记录、自定义请求头与多格式导出。
 
 [![Kotlin](https://img.shields.io/badge/Kotlin-100%25-7F52FF?logo=kotlin)](https://kotlinlang.org)
-[![Android](https://img.shields.io/badge/Android-5.0%2B-3DDC84?logo=android)](https://developer.android.com)
+[![Android](https://img.shields.io/badge/Android-11%2B%20(API%2030)-3DDC84?logo=android)](https://developer.android.com)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](#)
-[![Version](https://img.shields.io/badge/Version-1.5-blue)](#)
+[![Version](https://img.shields.io/badge/Version-1.6-blue)](#)
 
 ---
 
-## 🧭 界面结构(v1.5 底部导航)
+## 🧭 界面结构（v1.6 Jetpack Compose）
 
-v1.5 把原来「单页 + 工具栏 + 吸底操作坞」的结构整体推翻,改为 **底部导航四页**。
-一屏只做一件事,页面之间不再靠滚动条串联,也不再需要顶部工具栏的一堆图标按钮。
+v1.6 把整个界面迁移到 **Jetpack Compose**，`res/layout/` 与 ViewBinding 全部移除。
+结构仍是底部导航四页，但页面不再靠 XML inflate + `visibility` 切换，
+而是 `Scaffold` + `AnimatedContent` + `rememberSaveableStateHolder`。
 
 ```
 ┌──────────────────────────────┐
-│  抓取                        │  ← 页头
+│  抓取                        │  ← 页头（标题 + 副标题）
 │  填入网址与表达式,一次拿到...  │
 │                              │
 │  目标                        │
@@ -25,37 +26,49 @@ v1.5 把原来「单页 + 工具栏 + 吸底操作坞」的结构整体推翻,�
 │  └────────────────────────┘  │
 │                              │
 │  匹配表达式                  │
-│  [ XPath ] [ CSS ] [ 正则 ]  │
+│  [ XPath ] [ CSS ] [ 正则 ]  │  ← FilterChip
 │  ┌────────────────────────┐  │
 │  │ //a/@href              │  │
 │  └────────────────────────┘  │
 │  快捷插入                    │
-│  @title  @href  @data-src →  │
+│  @title  @href  @data-src →  │  ← AssistChip,横向滚动
 │                              │
 │  ┌────────────────────────┐  │
-│  │     🔍  开始匹配        │  │  ← 主操作
+│  │     🔍  开始匹配        │  │  ← 主操作 56dp
 │  └────────────────────────┘  │
 │  [ 批量 ] [ 复制规则 ] [ 重置]│
-│  尚未开始抓取                │
+│  尚未开始抓取                │  ← 状态条
 ├──────────────────────────────┤
-│  抓取   结果   历史   设置    │  ← 底部导航(常驻)
+│  抓取   结果   历史   设置    │  ← NavigationBar（常驻）
 └──────────────────────────────┘
 ```
 
-**结果页** 固定页头(条数 / 导出 / 复制全部 / 结构树 / 清空)+ 独立滚动列表 + 底部分页条;
-**历史页** 点击任意一条即回填到抓取页并自动切页;**设置页** 按「外观 / 网络 / 抓取 / 其它」分组。
+**结果页** 固定页头 + `LazyColumn`（自带 key、复用、回收） + 底部分页条；
+**历史页** 点击任意一条即回填并切到抓取页；**设置页** 按「外观 / 网络 / 抓取 / 其它」分组。
 
 ### 设计要点
 
 | 决策 | 原因 |
 |---|---|
-| 底部导航四页,而非单页滚动 | 输入、浏览结果、翻历史是三件不同的事,单页滚动会让三者互相挤压 |
-| 每页独立布局文件,惰性 inflate 后常驻 | 切页只切 `visibility`,输入内容、列表滚动位置、导航选中态都不丢 |
-| 不用 Fragment | 应用没有页面返回栈需求,控制器 + View 更轻,也避免 Fragment 重建导致的状态丢失 |
-| 抓取页主按钮 54dp 居中 | 拇指自然落点;底部导航已占位,不再需要吸底坞 |
-| 结果区 `layout_weight=1` 独立滚动 | 原布局把列表塞进 `wrap_content` 父容器,高度塌陷为 0,结果实际不可见 |
+| 整树 Compose,不保留 XML 布局 | 混合架构会让状态两端同步,反而更难保证一致性 |
+| `AnimatedContent` 交叉淡入（180ms / 120ms） | 切页有反馈,但不做位移动画,避免与列表滚动冲突 |
+| `rememberSaveableStateHolder` 按页保存 | 切页保留各页滚动位置与本地输入,切回不掉状态 |
+| 输入框持本地 `mutableStateOf` | 逐字输入只重组输入框自身,不触发整页重组 |
+| `inputRevision` 单向同步 | 历史回填 / 重置时递增版本号,才把外部值灌回输入框 |
+| `LazyColumn` 取代 `RecyclerView` | 列表项 key 稳定（`item.index` / `item.id`）,展开态按 key 记忆 |
+| 间距全部取自 `Dimens` | 左右边距、分组间距、卡片内边距只有一处定义,这是「视觉对齐」的前提 |
+| 主按钮 56dp / 图标按钮 48dp | Material 最小可点尺寸,拇指落点稳定 |
 | 状态反馈放在抓取页底部条 | 不再依赖 Snackbar 漂浮遮挡,加载与完成状态始终可见 |
 | 每个页面内置空状态引导 | 首次打开就知道下一步做什么 |
+| Composable 分层：pages / components / dialogs / theme | 页面只做布局,通用件复用,主题集中一处 |
+
+### 交互流畅度
+
+- **输入不阻塞**：URL / 表达式输入是纯本地状态,ViewModel 只在提交时才收到字符串
+- **切页只淡入淡出**：列表滚动不叠加任何动画
+- **列表 key 稳定**：`items(items, key = ...)`,展开、删除、翻页都不会整表重建
+- **分页条按需出现**：`AnimatedVisibility` + 竖向滑入,空页时不占位
+- **高亮结果缓存**：同一段内容只解析一次,滚动回来直接复用
 
 ---
 
@@ -236,19 +249,20 @@ v1.5 把原来「单页 + 工具栏 + 吸底操作坞」的结构整体推翻,�
 | 层 | 技术选型 |
 |---|---|
 | 语言 | Kotlin 100% |
-| 架构 | MVVM（ViewModel + LiveData + Repository） |
-| UI | Material 3 (Material Design Components) + ViewBinding |
+| 架构 | MVVM（ViewModel + StateFlow + Repository） |
+| UI | **Jetpack Compose** + Material 3（Compose BOM 2025.04.01, material3 1.3.2） |
+| 状态与事件 | `StateFlow<UiState>` + `collectAsStateWithLifecycle()`；一次性消息走 `Channel` |
+| 导航 | `Scaffold` + `NavigationBar` + `AnimatedContent`（未引入 Navigation 库,四页无返回栈需求） |
 | 网络 | OkHttp 4.12.0（自定义拦截器，自动重定向，代理支持） |
 | HTML 解析 | Jsoup 1.17.2 |
 | XPath 求值 | **自研 JsoupXPathEngine**（~700 行，表达式缓存） |
 | JS 渲染 | WebView（协程封装，超时保护） |
-| 图片加载 | Coil 2.6.0 |
-| JSON 处理 | Gson 2.10.1 + org.json |
-| 数据持久化 | SharedPreferences（JSON 序列化） |
-| 最低支持 | Android 5.0 (API 21) |
-| 目标 SDK | Android 14 (API 34) |
-| 编译 SDK | Android 16 (API 36) |
-| 构建 | Gradle 9.0+ / Kotlin 2.1+ |
+| JSON 处理 | org.json（导出与持久化，已移除 Gson） |
+| 数据持久化 | SharedPreferences（JSON 字符串序列化） |
+| 最低支持 | **Android 11 (API 30)** |
+| 目标 SDK | **Android 17 (API 37)** |
+| 编译 SDK | **Android 17 (API 37.0)** |
+| 构建 | Gradle 9.0 / AGP 8.13 / Kotlin 2.1.0 / JDK 17 |
 
 ### 项目结构
 
@@ -259,50 +273,53 @@ CrawlerTool/
 │   │   ├── assets/
 │   │   │   └── xpath_rules.md                          # 内置 XPath 使用指南（离线文档）
 │   │   ├── kotlin/com/SoloSu/Crawler_tool/
-│   │   │   ├── BaseActivity.kt                          # [新] Activity 基类，统一主题加载
-│   │   │   ├── MainActivity.kt                          # 主界面：UI 交互 + ViewModel 绑定
-│   │   │   ├── SettingsActivity.kt                      # [增强] 设置页：UA/超时/主题/代理/Header/JS渲染
-│   │   │   ├── XPathRulesActivity.kt                    # [新] XPath 规则手册（离线 Markdown 渲染）
-│   │   │   ├── CrawlerEngine.kt                         # [增强] 爬虫引擎：三种匹配 + 延迟/Cookie/代理/统计/FetchStats
-│   │   │   ├── JsoupXPathEngine.kt                      # [增强] 自研 XPath 引擎（~700行，表达式缓存，增强谓词）
-│   │   │   ├── JsRenderEngine.kt                        # [新] JS 渲染引擎（WebView + 协程）
-│   │   │   ├── HeaderManager.kt                         # [新] HTTP 请求头 & Cookie 管理器
-│   │   │   ├── HistoryManager.kt                        # [新] 历史记录 & 收藏管理器（100条自动保存）
-│   │   │   ├── NotificationHelper.kt                    # [新] 通知渠道辅助工具
-│   │   │   ├── HtmlTreeDialog.kt                        # [增强] HTML 树形结构对话框（搜索/缩放/展开到层/标签色扩展）
-│   │   │   ├── ResultAdapter.kt                         # [增强] 结果列表适配器（高亮缓存/属性标签/展开折叠）
-│   │   │   ├── ResultItem.kt                            # [新] 数据模型（index + content + expanded）
+│   │   │   ├── BaseActivity.kt                          # Activity 基类（主题 + 莫奈取色）
+│   │   │   ├── MainActivity.kt                          # 唯一 Compose 宿主：Scaffold + NavigationBar + 四页
+│   │   │   ├── XPathRulesActivity.kt                    # XPath 规则手册（Compose 渲染 Markdown）
+│   │   │   ├── CrawlerEngine.kt                         # 爬虫引擎：三种匹配 + 延迟/Cookie/代理/统计
+│   │   │   ├── JsoupXPathEngine.kt                      # 自研 XPath 引擎（~700 行，表达式缓存）
+│   │   │   ├── JsRenderEngine.kt                        # JS 渲染引擎（WebView + 协程）
+│   │   │   ├── HeaderManager.kt                         # HTTP 请求头 & Cookie 管理器
+│   │   │   ├── HistoryManager.kt                        # 历史记录（100 条自动保存）
+│   │   │   ├── NotificationHelper.kt                    # 通知渠道
+│   │   │   ├── HtmlTreeDialog.kt                        # HTML 树形结构对话框（仍是 View 实现）
+│   │   │   ├── ResultItem.kt                            # 数据模型（index + content）
 │   │   │   ├── HtmlUtil.kt                              # HTML 语法高亮工具
 │   │   │   ├── repository/
-│   │   │   │   ├── SettingsRepository.kt                # [新] 设置数据持久化层
-│   │   │   │   ├── CrawlerRepository.kt                 # [新] 爬虫数据仓库
-│   │   │   │   └── HistoryRepository.kt                 # [新] 历史记录仓库
+│   │   │   │   ├── SettingsRepository.kt                # 设置持久化
+│   │   │   │   ├── CrawlerRepository.kt                 # 爬虫数据仓库
+│   │   │   │   └── HistoryRepository.kt                 # 历史记录仓库
 │   │   │   ├── viewmodel/
-│   │   │   │   ├── MainViewModel.kt                     # [新] 主界面 ViewModel（MVVM 状态管理）
-│   │   │   │   └── SettingsViewModel.kt                 # [新] 设置页 ViewModel
-│   │   │   └── util/                                    # [新] 工具目录（预留）
+│   │   │   │   ├── MainViewModel.kt                     # 主界面 ViewModel（StateFlow + Channel）
+│   │   │   │   └── SettingsViewModel.kt                 # 设置 ViewModel（StateFlow）
+│   │   │   └── ui/
+│   │   │       ├── theme/Theme.kt                       # 双套 M3 色板 + 动态取色 + LocalEditorColors
+│   │   │       ├── components/
+│   │   │       │   ├── Common.kt                        # Dimens 统一间距 + PageHeader/SurfaceCard/Pill/EmptyState
+│   │   │       │   ├── HtmlHighlight.kt                 # HTML 语法高亮（带缓存）
+│   │   │       │   ├── SyntaxCodeBlock.kt               # 等宽代码块
+│   │   │       │   ├── ResultCard.kt                    # 结果卡片
+│   │   │       │   └── Markdown.kt                      # Markdown 渲染（规则手册用）
+│   │   │       ├── pages/
+│   │   │       │   ├── FetchPage.kt                     # 抓取页
+│   │   │       │   ├── ResultsPage.kt                   # 结果页
+│   │   │       │   ├── HistoryPage.kt                   # 历史页
+│   │   │       │   └── SettingsPage.kt                  # 设置页
+│   │   │       └── dialogs/
+│   │   │           ├── BatchSheet.kt                    # 批量抓取 ModalBottomSheet
+│   │   │           └── SimpleDialogs.kt                 # 导出 / 确认 / 关于
 │   │   ├── res/
-│   │   │   ├── layout/
-│   │   │   │   ├── activity_main.xml                    # [增强] 主界面布局
-│   │   │   │   ├── activity_settings.xml                # [增强] 设置布局（Header/代理/JS渲染/延迟/重试）
-│   │   │   │   ├── activity_xpath_rules.xml             # [新] XPath 规则手册布局
-│   │   │   │   ├── item_header_entry.xml                # [新] 内联 Header 条目布局
-│   │   │   │   └── item_result.xml                      # 结果卡片布局
-│   │   │   ├── anim/
-│   │   │   │   ├── fade_in.xml
-│   │   │   │   └── fade_out.xml
-│   │   │   ├── drawable/                                # 自定义图形
-│   │   │   ├── drawable-night/                           # 深色模式专属图形
-│   │   │   ├── values/                                  # 主题配色（含 Dynamic Color）
-│   │   │   ├── values-night/                            # 夜间主题配色
-│   │   │   └── menu/
-│   │   │       └── toolbar_menu.xml                     # 工具栏菜单（历史/导出/结构/规则/设置/关于）
-│   │   └── AndroidManifest.xml                          # [增强] 权限声明（INTERNET/存储/通知）
-│   └── build.gradle                                     # versionCode 6, versionName 1.3
+│   │   │   ├── drawable/                                # 矢量图标 + expand_btn_bg（树控件用）
+│   │   │   ├── values/                                  # 字符串、基线色板、AppTheme
+│   │   │   └── values-night/                            # 夜间色板
+│   │   └── AndroidManifest.xml                          # 权限声明（INTERNET/存储/通知）
+│   └── build.gradle                                     # versionCode 9, versionName 1.6
 ├── build.gradle                                         # 项目级构建配置
 ├── settings.gradle                                      # 项目设置
 └── gradle.properties                                    # Gradle 属性
 ```
+
+> v1.6 起 `res/layout/`、`res/menu/`、`res/anim/` 全部移除，界面代码集中到 `ui/` 目录下，一个界面单元对应一个 `.kt` 文件。
 
 ### 核心模块详解
 
@@ -434,8 +451,12 @@ href="([^"]+)"              /* 提取所有链接地址 */
 
 - Android Studio 或 AndroidIDE
 - JDK 17+
-- Android SDK 36+
-- Gradle 9.0+
+- Android SDK Platform **37.0**（`platforms;android-37.0`） + Build-Tools 37.0.0
+- Gradle 9.0（wrapper 已内置，无需单独安装）
+
+> SDK 仓库中 API 37 只提供带小版本的平台包（`android-37.0 / 37.1 / 37.2`），
+> 没有不带小版本的 `android-37`，所以 `app/build.gradle` 写的是
+> `compileSdk 37` + `compileSdkMinor 0`。
 
 ### 构建步骤
 
@@ -471,22 +492,26 @@ crawler.keyPassword=luaappxcore
 > 该证书与 LuaForge-Studio 使用同一 key,签名主体一致。
 > 换成自己的正式签名:替换 keystore 文件并改上述四项即可,`app/build.gradle` 无需改动。
 
-CI 由 `.github/workflows/main.yml` 驱动:推送到 `main` 自动构建、校验签名,并按 `v1.5.<构建号>` 发布到 GitHub Releases。
+CI 由 `.github/workflows/main.yml` 驱动:推送到 `main` 自动构建、校验签名,并按 `v1.6.<构建号>` 发布到 GitHub Releases。
 
 ### 依赖
 
 ```kotlin
 dependencies {
-    implementation 'androidx.core:core-ktx:latest'
-    implementation 'androidx.appcompat:appcompat:latest'
-    implementation 'com.google.android.material:material:latest'
-    implementation 'androidx.constraintlayout:constraintlayout:latest'
-    implementation 'androidx.lifecycle:lifecycle-livedata-ktx:2.9.0'
-    implementation 'org.jsoup:jsoup:1.17.2'              // HTML 解析
-    implementation 'com.squareup.okhttp3:okhttp:4.12.0'   // 网络请求
-    implementation 'io.coil-kt:coil:2.6.0'                // 图片加载
+    implementation platform('androidx.compose:compose-bom:2025.04.01')
+    implementation 'androidx.compose.ui:ui'
+    implementation 'androidx.compose.foundation:foundation'
+    implementation 'androidx.compose.material3:material3'      // M3 版本由 BOM 裁定
+    implementation 'androidx.activity:activity-compose:1.10.1'
+    implementation 'androidx.lifecycle:lifecycle-viewmodel-compose:2.9.0'
+    implementation 'androidx.lifecycle:lifecycle-runtime-compose:2.9.0'
+    implementation 'org.jsoup:jsoup:1.17.2'                    // HTML 解析
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'         // 网络请求
 }
 ```
+
+> 已移除：`constraintlayout`、`coil`、`livedata-ktx`、`material-icons-core`
+> （Compose 自带 Material Icons，列表改用 `LazyColumn`）。
 
 ---
 
@@ -494,6 +519,7 @@ dependencies {
 
 | 版本 | 新特性 |
 |------|--------|
+| **v1.6** | 界面整体迁移到 **Jetpack Compose**（`res/layout/`、ViewBinding、RecyclerView 全部移除）；`LiveData` → `StateFlow`，一次性消息改走 `Channel`；四页改为 `Scaffold` + `NavigationBar` + `AnimatedContent`，用 `rememberSaveableStateHolder` 保留各页滚动位置与本地状态；输入框持本地状态 + `inputRevision` 单向同步，逐字输入不触发整页重组；统一 `Dimens` 间距与 Material 最小可点尺寸，页面视觉基线对齐；`minSdk 21 → 30`（Android 11）、`targetSdk/compileSdk → 37`（Android 17）；`XPathRulesActivity` 改 Compose 渲染 Markdown；移除 Coil / Gson / constraintlayout / livedata-ktx 依赖 |
 | **v1.5** | 界面推翻重写为底部导航四页(抓取/结果/历史/设置),页面惰性 inflate 后常驻切换;配色体系重写为单一 `AppTheme` + 完整 M3 角色色板(日/夜);新增莫奈取色开关;设置页并入底部导航(移除 `SettingsActivity`);移除硬编码颜色与十余个废弃背景资源 |
 | **v1.4** | 界面整体重排(输入固定 / 结果独立滚动 / 吸底操作坞)、批量与历史改为 BottomSheet、结果卡片重设计(序号徽标+等宽代码块+展开收起)、新增 HistoryAdapter 与历史条目删除、Snackbar 统一反馈、空状态引导、匹配耗时修复(消除同页二次请求)、批量抓取真正读取设置的延迟与重试、导出移至 IO 线程、修复分页越界递归、GitHub Actions 恢复可用并产出签名 APK |
 | **v1.3** | MVVM 架构重构、BaseActivity 基类、历史记录、自定义请求头(HeaderManager)、代理设置、JS 渲染引擎(JsRenderEngine)、XPath 规则手册(XPathRulesActivity)、批量延迟 & 重试、UA 快捷预设、增强树控件(搜索/展开到层/缩放按钮)、MediaStore 导出兼容、通知渠道、结果语法高亮缓存、XPath 引擎增强(表达式缓存+谓词扩展)、strings.xml 扩充80+ |
@@ -506,8 +532,8 @@ dependencies {
 ## 关于
 
 **作者：** SoloSu  
-**技术栈：** Kotlin + Material 3 + MVVM + Jsoup + OkHttp + Coil  
-**最低支持：** Android 5.0 (API 21)  
-**目标 SDK：** Android 14 (API 34)  
-**当前版本：** v1.3 (build 6)
+**技术栈：** Kotlin + Jetpack Compose + Material 3 + MVVM + Jsoup + OkHttp  
+**最低支持：** Android 11 (API 30)  
+**目标 SDK：** Android 17 (API 37)  
+**当前版本：** v1.6 (build 9)
 

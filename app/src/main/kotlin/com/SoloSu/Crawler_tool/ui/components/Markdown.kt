@@ -1,5 +1,8 @@
 package com.SoloSu.Crawler_tool.ui.components
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -27,7 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -358,7 +361,7 @@ private val TABLE_CELL_WIDTH = 148.dp
 /** 代码块 + 复制按钮。复制反馈用按钮文案变化表示,不弹 Toast 打断阅读。 */
 @Composable
 private fun CodeBlockWithCopy(code: String) {
-    val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
     var copied by remember(code) { mutableStateOf(false) }
 
     Box(
@@ -379,7 +382,9 @@ private fun CodeBlockWithCopy(code: String) {
         )
         TextButton(
             onClick = {
-                clipboard.setText(AnnotatedString(code))
+                val manager = context.getSystemService(Context.CLIPBOARD_SERVICE)
+                    as? ClipboardManager
+                manager?.setPrimaryClip(ClipData.newPlainText("XPath Code", code))
                 copied = true
             },
             modifier = Modifier.align(Alignment.TopEnd),
